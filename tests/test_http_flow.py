@@ -14,6 +14,17 @@ def test_login_required_redirects(client):
     assert r.status_code == 303 and r.headers["location"] == "/login"
 
 
+def test_browser_401_redirects_to_login(client):
+    # a browser (Accept: text/html) hitting a protected page with no session
+    r = client.get("/master", headers={"Accept": "text/html"}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/login"
+
+
+def test_api_401_stays_json(client):
+    r = client.get("/master", headers={"Accept": "application/json"}, follow_redirects=False)
+    assert r.status_code == 401 and r.json()["detail"] == "Login required"
+
+
 def test_health_ok(client):
     r = client.get("/health")
     assert r.status_code == 200 and r.json()["status"] == "ok"

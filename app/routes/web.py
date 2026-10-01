@@ -79,7 +79,8 @@ def login(request: Request, identifier: str = Form(...), password: str = Form(..
         )
     resp = RedirectResponse("/", status_code=303)
     resp.set_cookie(config.SESSION_COOKIE, make_session_token(user.id),
-                    max_age=config.SESSION_MAX_AGE, httponly=True, samesite="lax")
+                    max_age=config.SESSION_MAX_AGE, httponly=True,
+                    samesite="lax", secure=config.COOKIE_SECURE, path="/")
     return resp
 
 
