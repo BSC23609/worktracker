@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Master &middot; {{ app_name }}{% endblock %}
+{% block body %}
+<h1>Master &mdash; users &amp; roles</h1>
+<p class="help">Add staff and choose who is a Superadmin. People log in with their <strong>email or
+employee code</strong> (either works). New users get the default password <code>{{ default_password }}</code>
+and must change it on first login.</p>
+
+<div class="card" style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+  <form method="post" action="/master/send-credentials" style="margin:0">
+    <button class="btn" onclick="return confirm('Email login details (link, username and temporary password) to every active staff member who has an email address?')">Email login details to everyone</button>
+  </form>
+  <span class="help" style="margin:0">Sends each person their sign-in link, username and temporary password.
+  Staff with no email aren't included &mdash; tell them their code and password directly.</span>
+</div>
+
+<details class="card">
+  <summary>Add a user</summary>
+  <form method="post" action="/master/users/create" style="margin-top:.9rem">
+    <div class="row">
+      <div><label>Name</label><input name="name" required></div>
+      <div><label>Employee code</label><input name="emp_code" placeholder="e.g. BSC/004"></div>
+    </div>
+    <div class="row">
+      <div><label>Email <span class="help" style="display:inline">(optional if emp code given)</span></label>
+        <input type="email" name="email"></div>
+      <div><label>WhatsApp number</label><input name="whatsapp" placeholder="10-digit or with 91"></div>
+      <div><label>Role</label>
+        <select name="role">
+          <option value="user" selected>General user</option>
+          <option value="superadmin">Superadmin</option>
+        </select>
+      </div>
+    </div>
+    <p class="help">Give at least one of email or employee code so they can sign in.</p>
+    <button class="btn">Add user</button>
+  </form>
+</details>
+
+<div class="card" style="padding:0">
+<table>
+  <thead><tr><th>Name</th><th>Emp code</th><th>Email</th><th>WhatsApp</th><th>Role</th><th>Active</th><th>Actions</th></tr></thead>
+  <tbody>
+  {% for u in users %}
+  <tr>
+    <td><input form="edit-{{ u.id }}" name="name" value="{{ u.name }}" style="min-width:120px"></td>
+    <td><input form="edit-{{ u.id }}" name="emp_code" value="{{ u.emp_code or '' }}" style="min-width:90px"></td>
+    <td class="help">{{ u.email or '—' }}</td>
+    <td><input form="edit-{{ u.id }}" name="whatsapp" value="{{ u.whatsapp or '' }}" style="min-width:110px"></td>
+    <td>
+      <select form="edit-{{ u.id }}" name="role" style="min-width:115px">
+        <option value="user" {% if u.role=='user' %}selected{% endif %}>General user</option>
+        <option value="superadmin" {% if u.role=='superadmin' %}selected{% endif %}>Superadmin</option>
+      </select>
+    </td>
+    <td style="text-align:center">
+      <input form="edit-{{ u.id }}" type="checkbox" name="active" {% if u.active %}checked{% endif %} style="width:auto">
+    </td>
+    <td style="white-space:nowrap">
+      <form id="edit-{{ u.id }}" method="post" action="/master/users/{{ u.id }}/update" style="display:inline"></form>
+      <button form="edit-{{ u.id }}" class="btn sm">Save</button>
+      {% if u.email %}
+      <form method="post" action="/master/users/{{ u.id }}/send-credentials" style="display:inline">
+        <button class="btn ghost sm" onclick="return confirm('Email login details to {{ u.name }}?')">Send login</button>
+      </form>
+      {% endif %}
+      <form method="post" action="/master/users/{{ u.id }}/reset-password" style="display:inline">
+        <button class="btn ghost sm" onclick="return confirm('Reset {{ u.name }} to the default password?')">Reset pwd</button>
+      </form>
+      {% if u.id != me.id %}
+      <form method="post" action="/master/users/{{ u.id }}/delete" style="display:inline">
+        <button class="btn danger sm" onclick="return confirm('Delete {{ u.name }}? This cannot be undone.')">Delete</button>
+      </form>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="help">Email is optional &mdash; a user with only an employee code logs in with that code.
+Deleting is only possible for a user with no tasks on record; otherwise untick
+<strong>Active</strong> to disable the account while keeping their task history.</p>
+{% endblock %}

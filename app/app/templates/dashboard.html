@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Board &middot; {{ app_name }}{% endblock %}
+
+{% macro deadline_badge(t) -%}
+  {% if t.current_deadline < today %}<span class="badge b-overdue">Overdue {{ (today - t.current_deadline).days }}d</span>
+  {% elif t.current_deadline == today %}<span class="badge b-today">Due today</span>
+  {% else %}<span class="badge b-ok">{{ (t.current_deadline - today).days }}d left</span>{% endif %}
+{%- endmacro %}
+
+{% macro task_row(t, show_assignee) -%}
+  <tr>
+    <td>
+      <a href="/tasks/{{ t.id }}"><strong>{{ t.title }}</strong></a>
+      {% if t.is_self_raised %}<span class="badge b-self">Self</span>{% endif %}
+      {% if t.extension_count %}<span class="badge b-pending">{{ t.extension_count }}&times; extended</span>{% endif %}
+    </td>
+    {% if show_assignee %}<td>{{ t.assignee.name }}</td>{% endif %}
+    <td>
+      {{ t.current_deadline.strftime('%d-%b-%Y') }}
+      {% if t.original_deadline != t.current_deadline %}
+        <div class="help"><span class="strike">{{ t.original_deadline.strftime('%d-%b') }}</span> originally</div>
+      {% endif %}
+    </td>
+    <td>{{ deadline_badge(t) }}</td>
+    <td><span class="badge b-{{ t.priority }}">{{ t.priority }}</span></td>
+    <td><a class="btn ghost sm" href="/tasks/{{ t.id }}">Open</a></td>
+  </tr>
+{%- endmacro %}
+
+{% block body %}
+<div class="pagehead">
+  <h1>{% if me.is_superadmin %}Team board{% else %}My tasks{% endif %}</h1>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="n">{{ tasks|length }}</div><div class="l">Open</div></div>
+  <div class="stat red"><div class="n">{{ overdue|length }}</div><div class="l">Overdue</div></div>
+  <div class="stat amber"><div class="n">{{ due_today|length }}</div><div class="l">Due today</div></div>
+  {% if me.is_superadmin %}<div class="stat"><div class="n">{{ groups|length }}</div><div class="l">People</div></div>{% endif %}
+</div>
+
+<details class="card">
+  <summary>{% if me.is_superadmin %}Assign a new task{% else %}Raise a task for myself{% endif %}</summary>
+  <form method="post" action="/tasks/create" enctype="multipart/form-data" style="margin-top:.9rem">
+    <label>Task title</label>
+    <input name="title" required maxlength="300" placeholder="e.g. Submit GST reconciliation for September">
+    <label>Details (optional)</label>
+    <textarea name="description" placeholder="Any context or scope"></textarea>
+    <div class="row">
+      {% if me.is_superadmin %}
+      <div>
+        <label>Assign to</label>
+        <select name="assigned_to_id" required>
+          {% for u in assignable %}
+          <option value="{{ u.id }}" {% if u.id==me.id %}selected{% endif %}>{{ u.name }}{% if u.id==me.id %} (me){% endif %}{% if u.is_superadmin %} &middot; superadmin{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+      <div>
+        <label>Deadline</label>
+        <input type="date" name="deadline" required value="{{ today }}" min="{{ today }}">
+      </div>
+      <div>
+        <label>Priority</label>
+        <select name="priority">
+          <option value="medium" selected>Medium</option>
+          <option value="high">High</option>
+          <option value="low">Low</option>
+        </select>
+      </div>
+    </div>
+    <label>Attach documents (optional)</label>
+    <input class="file-input" type="file" name="attachments" multiple>
+    <p class="help">Any related files (PDF, Word, images, etc.). Up to 4 MB each.</p>
+    <button class="btn">Raise task &amp; notify</button>
+    <p class="help">The assignee gets an email and WhatsApp reminder with the deadline.</p>
+  </form>
+</details>
+
+{% if me.is_superadmin %}
+  {# Consolidated view: open tasks grouped by person #}
+  {% if groups %}
+    {% for g in groups %}
+    <details class="person-group" open>
+      <summary>
+        <span class="pg-name">{{ g.person.name }}</span>
+        {% if g.person.is_superadmin %}<span class="badge b-self">Superadmin</span>{% endif %}
+        <span class="pg-count">{{ g.tasks|length }} open{% if g.overdue %} &middot; <span style="color:var(--red)">{{ g.overdue }} overdue</span>{% endif %}</span>
+      </summary>
+      <div class="pg-body">
+        <table>
+          <thead><tr><th>Task</th><th>Deadline</th><th>Status</th><th>Priority</th><th></th></tr></thead>
+          <tbody>
+            {% for t in g.tasks %}{{ task_row(t, false) }}{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+    {% endfor %}
+  {% else %}
+    <div class="card"><div class="empty">No open tasks across the team.</div></div>
+  {% endif %}
+{% else %}
+  {# Employee view: just my own open tasks #}
+  <div class="card" style="padding:0">
+    {% if tasks %}
+    <table>
+      <thead><tr><th>Task</th><th>Deadline</th><th>Status</th><th>Priority</th><th></th></tr></thead>
+      <tbody>
+        {% for t in tasks %}{{ task_row(t, false) }}{% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">No open tasks. Use the form above to raise one.</div>
+    {% endif %}
+  </div>
+{% endif %}
+{% endblock %}

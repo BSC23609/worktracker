@@ -1,0 +1,121 @@
+from datetime import timedelta
+
+from app.db import today_ist
+from app.models import Task, User
+from tests.conftest import login_as
+
+
+def _future(n):
+    return (today_ist() + timedelta(days=n)).isoformat()
+
+
+def test_login_required_redirects(client):
+    r = client.get("/", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/login"
+
+
+def test_health_ok(client):
+    r = client.get("/health")
+    assert r.status_code == 200 and r.json()["status"] == "ok"
+
+
+def test_superadmin_assigns_and_employee_sees_it(client, db):
+    login_as(client, db, "gourav@bharatsteels.in")
+    ravi = db.query(User).filter_by(email="ravi@bharatsteels.in").one()
+    r = client.post("/tasks/create", data={
+        "title": "Reconcile NMDC ledger", "description": "Sept", "priority": "high",
+        "assigned_to_id": str(ravi.id), "deadline": _future(5),
+    }, follow_redirects=False)
+    assert r.status_code == 303
+    task = db.query(Task).filter_by(title="Reconcile NMDC ledger").one()
+    assert task.assigned_to_id == ravi.id
+
+    # Ravi logs in and sees exactly his task on the board
+    login_as(client, db, "ravi@bharatsteels.in")
+    board = client.get("/")
+    assert "Reconcile NMDC ledger" in board.text
+
+
+def test_employee_self_raise_via_http(client, db):
+    login_as(client, db, "priya@bharatsteels.in")
+    r = client.post("/tasks/create", data={
+        "title": "Prepare my weekly plan", "deadline": _future(2), "priority": "medium",
+    }, follow_redirects=False)
+    assert r.status_code == 303
+    t = db.query(Task).filter_by(title="Prepare my weekly plan").one()
+    assert t.is_self_raised is True
+
+
+def test_extend_via_http_keeps_history(client, db):
+    g = login_as(client, db, "gourav@bharatsteels.in")
+    ravi = db.query(User).filter_by(email="ravi@bharatsteels.in").one()
+    client.post("/tasks/create", data={
+        "title": "HTTP extend", "assigned_to_id": str(ravi.id), "deadline": _future(3),
+    })
+    task = db.query(Task).filter_by(title="HTTP extend").one()
+
+    login_as(client, db, "ravi@bharatsteels.in")
+    r = client.post(f"/tasks/{task.id}/extend",
+                    data={"new_deadline": _future(9), "reason": "Material delayed"},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    db.refresh(task)
+    assert len(task.deadlines) == 2
+    assert task.original_deadline.isoformat() == _future(3)
+    assert task.current_deadline.isoformat() == _future(9)
+
+    # the detail page shows both deadlines and the reason
+    page = client.get(f"/tasks/{task.id}")
+    assert "Material delayed" in page.text
+    assert "Original" in page.text and "Current" in page.text
+
+
+def test_employee_cannot_open_others_task(client, db):
+    g = login_as(client, db, "gourav@bharatsteels.in")
+    ravi = db.query(User).filter_by(email="ravi@bharatsteels.in").one()
+    client.post("/tasks/create", data={
+        "title": "Ravi only", "assigned_to_id": str(ravi.id), "deadline": _future(3)})
+    task = db.query(Task).filter_by(title="Ravi only").one()
+    login_as(client, db, "priya@bharatsteels.in")
+    r = client.get(f"/tasks/{task.id}")
+    assert r.status_code == 403
+
+
+def test_master_tab_superadmin_only(client, db):
+    login_as(client, db, "ravi@bharatsteels.in")
+    assert client.get("/master").status_code == 403
+    login_as(client, db, "gourav@bharatsteels.in")
+    assert client.get("/master").status_code == 200
+
+
+def test_master_create_user(client, db):
+    login_as(client, db, "gourav@bharatsteels.in")
+    r = client.post("/master/users/create", data={
+        "name": "New Staff", "email": "newstaff@bharatsteels.in",
+        "whatsapp": "9000000000", "role": "user"}, follow_redirects=False)
+    assert r.status_code == 303
+    u = db.query(User).filter_by(email="newstaff@bharatsteels.in").one()
+    assert u.whatsapp == "919000000000" and u.must_reset is True
+
+
+def test_cannot_remove_last_superadmin(client, db):
+    # demote Jeeva first (ok, Gourav remains), then try to demote Gourav (blocked)
+    login_as(client, db, "gourav@bharatsteels.in")
+    jeeva = db.query(User).filter_by(email="jeeva@bharatsteels.in").one()
+    gourav = db.query(User).filter_by(email="gourav@bharatsteels.in").one()
+    client.post(f"/master/users/{jeeva.id}/update",
+                data={"name": "Jeeva", "role": "user", "active": "on"})
+    db.refresh(jeeva); assert jeeva.role == "user"
+    r = client.post(f"/master/users/{gourav.id}/update",
+                    data={"name": "Gourav", "role": "user", "active": "on"},
+                    follow_redirects=False)
+    db.refresh(gourav)
+    assert gourav.role == "superadmin"  # blocked
+    assert "err=" in r.headers["location"]
+
+
+def test_cron_requires_secret(client):
+    assert client.post("/cron/daily-digests").status_code == 401
+    assert client.post("/cron/daily-digests?key=wrong").status_code == 401
+    ok = client.post("/cron/daily-digests", headers={"X-Cron-Key": "test-cron"})
+    assert ok.status_code == 200 and "employee_sent" in ok.json()

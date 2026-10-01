@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{% block title %}{{ app_name }}{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css?v=5">
+  <link rel="icon" href="/static/logos/group.png">
+</head>
+<body>
+{% if me %}
+<header class="topbar">
+  <a class="brand" href="/">
+    <img src="/static/logos/group.png" alt="The Bharat Steel Group" class="brand-logo">
+    <span class="brand-name">{{ app_name }}</span>
+  </a>
+  <nav class="topnav">
+    <a href="/">Board</a>
+    {% if me.is_superadmin %}<a href="/master">Master</a>{% endif %}
+    <span class="who">{{ me.name }}{% if me.is_superadmin %} &middot; Superadmin{% endif %}</span>
+    <a href="/change-password" class="muted">Password</a>
+    <a href="/logout" class="muted">Logout</a>
+  </nav>
+</header>
+{% endif %}
+<main class="wrap">
+  {% if ok %}<div class="flash ok">{{ ok }}</div>{% endif %}
+  {% if err %}<div class="flash err">{{ err }}</div>{% endif %}
+  {% block body %}{% endblock %}
+</main>
+{% if me %}
+<footer class="wrap sitefoot">
+  {% include "_companies.html" %}
+</footer>
+{% endif %}
+</body>
+</html>

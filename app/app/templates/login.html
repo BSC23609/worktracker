@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in &middot; {{ app_name }}</title>
+<link rel="stylesheet" href="/static/style.css?v=5">
+<link rel="icon" href="/static/logos/group.png">
+</head><body>
+<main class="wrap" style="max-width:400px;margin-top:7vh">
+  <div style="text-align:center;margin-bottom:1.2rem">
+    <img src="/static/logos/group.png" alt="The Bharat Steel Group" class="login-logo">
+    <h1 style="margin-top:.4rem">{{ app_name }}</h1>
+  </div>
+  {% if error %}<div class="flash err">{{ error }}</div>{% endif %}
+  <form method="post" action="/auth/login" class="card">
+    <label>Email or employee code</label>
+    <input type="text" name="identifier" required autofocus autocomplete="username"
+           placeholder="e.g. you@bharatsteels.in or BSC/004">
+    <label>Password</label>
+    <input type="password" name="password" required autocomplete="current-password">
+    <button class="btn" style="width:100%">Sign in</button>
+  </form>
+  {% include "_companies.html" %}
+</main>
+</body></html>
