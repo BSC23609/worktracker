@@ -8,7 +8,7 @@ INVARIANTS enforced here:
 """
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 from sqlalchemy import func, select
@@ -185,6 +185,142 @@ def add_attachment(
         db.commit()
         db.refresh(att)
     return att
+
+
+# ---- recurring schedules --------------------------------------------------
+import calendar as _calendar
+from dateutil.relativedelta import relativedelta
+
+from .models import (  # noqa: E402
+    FREQUENCIES,
+    FREQ_DAILY,
+    FREQ_MONTHLY,
+    FREQ_WEEKLY,
+    TaskSchedule,
+)
+
+_MONTH_STEP = {"monthly": 1, "quarterly": 3, "half_yearly": 6, "yearly": 12}
+
+
+def _clamp(year: int, month: int, day: int) -> date:
+    last = _calendar.monthrange(year, month)[1]
+    return date(year, month, min(day, last))
+
+
+def schedule_occurrences(sch: TaskSchedule, until: date):
+    """Yield occurrence dates from start_date through min(until, end_date)."""
+    start = sch.start_date
+    last = min(until, sch.end_date) if sch.end_date else until
+    if last < start:
+        return
+    freq = sch.frequency
+    guard = 0
+    if freq == FREQ_DAILY:
+        d = start
+        while d <= last and guard < 5000:
+            yield d
+            d += timedelta(days=1)
+            guard += 1
+    elif freq == FREQ_WEEKLY:
+        target = sch.day_of_week if sch.day_of_week is not None else start.weekday()
+        d = start + timedelta(days=(target - start.weekday()) % 7)
+        while d <= last and guard < 3000:
+            yield d
+            d += timedelta(days=7)
+            guard += 1
+    elif freq == FREQ_MONTHLY:
+        anchor = sch.day_of_month or start.day
+        m = date(start.year, start.month, 1)
+        while m <= last and guard < 1200:
+            occ = _clamp(m.year, m.month, anchor)
+            if start <= occ <= last:
+                yield occ
+            m += relativedelta(months=1)
+            guard += 1
+    else:  # quarterly / half_yearly / yearly — anchor on the start date
+        step = _MONTH_STEP[freq]
+        i = 0
+        while guard < 600:
+            occ = start + relativedelta(months=step * i)
+            if occ > last:
+                break
+            yield occ
+            i += 1
+            guard += 1
+
+
+def create_schedule(
+    db: Session, *, created_by: User, assigned_to: User, title: str, frequency: str,
+    start_date: date, end_date: Optional[date] = None, day_of_week: Optional[int] = None,
+    day_of_month: Optional[int] = None, deadline_offset_days: int = 0,
+    description: str = "", priority: str = "medium", commit: bool = True,
+) -> TaskSchedule:
+    title = (title or "").strip()
+    if not title:
+        raise TaskError("Title is required.")
+    if frequency not in FREQUENCIES:
+        raise TaskError("Please choose a valid frequency.")
+    if end_date and end_date < start_date:
+        raise TaskError("End date cannot be before the start date.")
+    if deadline_offset_days < 0:
+        raise TaskError("Deadline days cannot be negative.")
+    if created_by.role != ROLE_SUPERADMIN and assigned_to.id != created_by.id:
+        raise TaskError("You can only set up recurring tasks for yourself.")
+    if frequency == FREQ_WEEKLY and day_of_week is None:
+        raise TaskError("Please choose which day of the week.")
+    if frequency == FREQ_MONTHLY and not day_of_month:
+        raise TaskError("Please choose which day of the month.")
+
+    sch = TaskSchedule(
+        title=title, description=(description or "").strip() or None,
+        priority=priority if priority in ("low", "medium", "high") else "medium",
+        assigned_to_id=assigned_to.id, created_by_id=created_by.id,
+        frequency=frequency, start_date=start_date, end_date=end_date,
+        day_of_week=day_of_week if frequency == FREQ_WEEKLY else None,
+        day_of_month=day_of_month if frequency == FREQ_MONTHLY else None,
+        deadline_offset_days=deadline_offset_days, active=True,
+    )
+    db.add(sch)
+    if commit:
+        db.commit()
+        db.refresh(sch)
+    return sch
+
+
+def _instantiate(db: Session, sch: TaskSchedule, occ: date) -> Task:
+    deadline = occ + timedelta(days=sch.deadline_offset_days)
+    task = Task(
+        title=sch.title, description=sch.description, priority=sch.priority,
+        status=STATUS_PENDING, assigned_to_id=sch.assigned_to_id,
+        created_by_id=sch.created_by_id, original_deadline=deadline,
+        current_deadline=deadline, schedule_id=sch.id, occurrence_date=occ,
+    )
+    db.add(task)
+    db.flush()
+    db.add(TaskDeadline(task_id=task.id, seq=1, deadline=deadline, reason=None,
+                        set_by_id=sch.created_by_id))
+    return task
+
+
+def generate_due_recurring_tasks(db: Session, *, on: date | None = None) -> int:
+    """Create task instances for all occurrences due on/before `on` that don't
+    exist yet. Idempotent. Returns the number of instances created."""
+    today = on or today_ist()
+    created = 0
+    schedules = list(db.scalars(select(TaskSchedule).where(TaskSchedule.active.is_(True))))
+    for sch in schedules:
+        for occ in schedule_occurrences(sch, until=today):
+            if sch.last_generated_date and occ <= sch.last_generated_date:
+                continue
+            exists = db.scalar(select(Task.id).where(
+                Task.schedule_id == sch.id, Task.occurrence_date == occ))
+            if exists:
+                continue
+            _instantiate(db, sch, occ)
+            created += 1
+        sch.last_generated_date = today
+    db.commit()
+    return created
 
 
 def open_tasks_for(db: Session, user_id: int) -> list[Task]:

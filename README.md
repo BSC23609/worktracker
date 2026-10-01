@@ -7,6 +7,11 @@ WhatsApp reminders via **WATI**, email via **SMTP**, morning digests via **GitHu
 
 - **Superadmins** (Gourav, Jeeva) allocate tasks to anyone — including each other — with a deadline.
   **General users** can raise tasks for themselves.
+- **Recurring tasks.** Tick **Repetitive task** when raising one and set a frequency (daily, weekly on a
+  chosen weekday, monthly on a chosen day, quarterly, half-yearly, yearly), a start date, an optional end
+  date (blank = until stopped), and a deadline as days-from-start. It's stored as a *schedule*; the
+  morning job materialises each occurrence as a normal task on the assignee's board as it falls due, and
+  they mark each done. The board lists active schedules with a **Stop** button (already-created tasks stay).
 - On raising a task, the assignee gets an **email + WhatsApp** reminder with the task and deadline.
 - **Every morning** each person gets their pending-task list; each superadmin also gets a
   **consolidated** list of everyone's open tasks (overdue flagged).
@@ -77,10 +82,10 @@ tests/                    29 tests (deadline history, auth, notifications, full 
 ### Updating the schema later
 
 `scripts/neon_setup.sql` is the full fresh-install script (schema + indexes + the whole roster) and
-is idempotent. `scripts/add_emp_code.sql` is a one-time migration for a database that predates
-employee-code login — it makes `email` optional, adds the `emp_code` column, and imports/backfills the
-roster (existing rows keep their password, name and role). For any later model change you can simply
-re-run `neon_setup.sql` or `scripts/init_db.py` — both only add what's missing.
+is idempotent. `scripts/add_emp_code.sql` and `scripts/add_recurring.sql` are one-time migrations for a
+database created before those features (employee-code login, and recurring tasks, respectively) — each
+adds only what's missing and leaves existing rows untouched. For any later model change you can re-run
+`neon_setup.sql` or `scripts/init_db.py`; both only add what's missing.
 
 ## WATI templates to create (and get approved)
 

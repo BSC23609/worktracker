@@ -29,14 +29,17 @@ from ..auth import (
     verify_password,
 )
 from ..db import get_db, today_ist
-from ..models import OPEN_STATUSES, ROLE_SUPERADMIN, ROLES, Task, TaskAttachment, User
+from ..models import (OPEN_STATUSES, ROLE_SUPERADMIN, ROLES, WEEKDAYS, Task,
+                      TaskAttachment, TaskSchedule, User)
 from ..services import (
     TaskError,
     add_attachment,
     all_open_tasks,
     complete_task,
+    create_schedule,
     create_task,
     extend_deadline,
+    generate_due_recurring_tasks,
     open_tasks_for,
     reopen_task,
 )
@@ -239,31 +242,61 @@ def dashboard(request: Request, db: Session = Depends(get_db),
                         key=lambda g: (-g["overdue"], -len(g["tasks"]), g["person"].name))
         assignable = list(db.scalars(select(User).where(User.active.is_(True)).order_by(User.name)))
 
+    # Active recurring schedules the person can see (own/assigned, or all for superadmin).
+    sched_stmt = select(TaskSchedule).where(TaskSchedule.active.is_(True))
+    if not user.is_superadmin:
+        sched_stmt = sched_stmt.where(
+            (TaskSchedule.assigned_to_id == user.id) | (TaskSchedule.created_by_id == user.id))
+    schedules = list(db.scalars(sched_stmt.order_by(TaskSchedule.created_at.desc())))
+
     return templates.TemplateResponse(request, "dashboard.html", {
         "me": user, "tasks": tasks, "today": today,
         "overdue": overdue, "due_today": due_today, "groups": groups,
-        "people": groups, "assignable": assignable,
+        "people": groups, "assignable": assignable, "schedules": schedules,
+        "weekdays": list(enumerate(WEEKDAYS)),
         "ok": request.query_params.get("ok"), "err": request.query_params.get("err"),
     })
 
 
 # ---- task actions ---------------------------------------------------------
 @router.post("/tasks/create")
-def create(request: Request, title: str = Form(...), deadline: str = Form(...),
+def create(request: Request, title: str = Form(...), deadline: str = Form(""),
            description: str = Form(""), priority: str = Form("medium"),
            assigned_to_id: Optional[int] = Form(None),
            attachments: list[UploadFile] = File(default=[]),
+           repetitive: Optional[str] = Form(None),
+           frequency: str = Form("daily"), start_date: str = Form(""), end_date: str = Form(""),
+           day_of_week: str = Form(""), day_of_month: str = Form(""),
+           deadline_offset: str = Form("0"),
            user: User = Depends(require_user), db: Session = Depends(get_db)):
+    def _int_or_none(s):
+        s = (s or "").strip()
+        return int(s) if s.isdigit() else None
     try:
         if user.is_superadmin and assigned_to_id:
             assignee = db.get(User, int(assigned_to_id))
             if not assignee:
                 raise TaskError("Selected user not found.")
         else:
-            assignee = user  # general user -> self; superadmin with no selection -> self
+            assignee = user
+        if not assignee.active:
+            raise TaskError("Cannot assign to an inactive user.")
+
+        if repetitive == "on":
+            sch = create_schedule(
+                db, created_by=user, assigned_to=assignee, title=title, frequency=frequency,
+                start_date=_parse_date(start_date), end_date=_parse_date(end_date) if end_date else None,
+                day_of_week=_int_or_none(day_of_week), day_of_month=_int_or_none(day_of_month),
+                deadline_offset_days=_int_or_none(deadline_offset) or 0,
+                description=description, priority=priority)
+            n = generate_due_recurring_tasks(db)  # create any instances already due
+            who = "yourself" if sch.assigned_to_id == user.id else assignee.name
+            extra = f" {n} due instance(s) added now." if n else ""
+            return _flash("/", f"Recurring task set up for {who} ({sch.frequency_label}).{extra}")
+
+        # one-off task
         task = create_task(db, created_by=user, assigned_to=assignee, title=title,
-                           deadline=_parse_date(deadline), description=description,
-                           priority=priority)
+                           deadline=_parse_date(deadline), description=description, priority=priority)
         n_files = _save_uploads(db, task, user, attachments)
     except TaskError as e:
         return _flash("/", str(e), ok=False)
@@ -271,6 +304,19 @@ def create(request: Request, title: str = Form(...), deadline: str = Form(...),
     who = "yourself" if task.is_self_raised else task.assignee.name
     extra = f" {n_files} file(s) attached." if n_files else ""
     return _flash("/", f"Task raised for {who}. Reminder sent.{extra}")
+
+
+@router.post("/schedules/{schedule_id}/stop")
+def stop_schedule(schedule_id: int, user: User = Depends(require_user),
+                  db: Session = Depends(get_db)):
+    sch = db.get(TaskSchedule, schedule_id)
+    if not sch:
+        raise HTTPException(404, "Schedule not found")
+    if not (user.is_superadmin or sch.created_by_id == user.id or sch.assigned_to_id == user.id):
+        raise HTTPException(403, "Not your schedule")
+    sch.active = False
+    db.commit()
+    return _flash("/", "Recurring task stopped. Already-created tasks are kept.")
 
 
 def _save_uploads(db: Session, task: Task, user: User, uploads: list[UploadFile]) -> int:

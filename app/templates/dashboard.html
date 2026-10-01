@@ -58,10 +58,6 @@
       </div>
       {% endif %}
       <div>
-        <label>Deadline</label>
-        <input type="date" name="deadline" required value="{{ today }}" min="{{ today }}">
-      </div>
-      <div>
         <label>Priority</label>
         <select name="priority">
           <option value="medium" selected>Medium</option>
@@ -70,11 +66,67 @@
         </select>
       </div>
     </div>
-    <label>Attach documents (optional)</label>
+
+    <label style="display:flex;align-items:center;gap:.5rem;margin-top:.9rem">
+      <input type="checkbox" name="repetitive" id="repetitive" value="on" style="width:auto" onchange="wtToggleRepeat()">
+      <span>Repetitive task</span>
+    </label>
+
+    <!-- one-off deadline (hidden when repetitive) -->
+    <div id="oneoff-deadline">
+      <label>Deadline</label>
+      <input type="date" name="deadline" value="{{ today }}" min="{{ today }}">
+    </div>
+
+    <!-- recurrence panel (shown when repetitive) -->
+    <div id="recur-panel" style="display:none;border:1px solid var(--g200);border-radius:var(--radius);padding:.9rem;background:var(--g50);margin-top:.4rem">
+      <div class="stacked">
+        <div>
+          <label>Frequency</label>
+          <select name="frequency" id="frequency" onchange="wtToggleFreq()">
+            <option value="daily">Every day</option>
+            <option value="weekly">Weekly once</option>
+            <option value="monthly">Monthly once</option>
+            <option value="quarterly">Quarterly once</option>
+            <option value="half_yearly">Half-yearly once</option>
+            <option value="yearly">Yearly once</option>
+          </select>
+        </div>
+        <div id="weekly-field" style="display:none">
+          <label>Which day of the week</label>
+          <select name="day_of_week">
+            {% for i, wd in weekdays %}<option value="{{ i }}">{{ wd }}</option>{% endfor %}
+          </select>
+        </div>
+        <div id="monthly-field" style="display:none">
+          <label>Which day of the month</label>
+          <input type="number" name="day_of_month" min="1" max="31" placeholder="1-31">
+          <p class="help">If a month is shorter, the last day is used.</p>
+        </div>
+        <div class="row">
+          <div>
+            <label>Start date</label>
+            <input type="date" name="start_date" value="{{ today }}">
+          </div>
+          <div>
+            <label>End date <span class="help" style="display:inline">(optional)</span></label>
+            <input type="date" name="end_date">
+          </div>
+          <div>
+            <label>Deadline (days from start)</label>
+            <input type="number" name="deadline_offset" min="0" value="0">
+          </div>
+        </div>
+      </div>
+      <p class="help">Leave end date blank to run until you stop it. Each occurrence is due the given
+      number of days after it appears (0 = same day).</p>
+    </div>
+
+    <label style="margin-top:.9rem">Attach documents (optional)</label>
     <input class="file-input" type="file" name="attachments" multiple>
-    <p class="help">Any related files (PDF, Word, images, etc.). Up to 4 MB each.</p>
-    <button class="btn">Raise task &amp; notify</button>
-    <p class="help">The assignee gets an email and WhatsApp reminder with the deadline.</p>
+    <p class="help">Any related files (PDF, Word, images, etc.). Up to 4 MB each. (Not applied to recurring tasks.)</p>
+    <button class="btn">Raise task</button>
+    <p class="help">One-off tasks notify the assignee immediately. Recurring tasks appear on their board as each one falls due.</p>
   </form>
 </details>
 
@@ -116,4 +168,55 @@
     {% endif %}
   </div>
 {% endif %}
+
+{% if schedules %}
+<div class="card">
+  <div style="margin-bottom:.6rem">
+    <div style="font-size:.74rem;text-transform:uppercase;letter-spacing:.05em;color:var(--g600)">Recurring tasks</div>
+    <h3 class="display" style="margin:0">Active schedules</h3>
+  </div>
+  <table>
+    <thead><tr><th>Task</th>{% if me.is_superadmin %}<th>Assignee</th>{% endif %}<th>Repeats</th><th></th></tr></thead>
+    <tbody>
+    {% for s in schedules %}
+      <tr>
+        <td><strong>{{ s.title }}</strong></td>
+        {% if me.is_superadmin %}<td>{{ s.assignee.name }}</td>{% endif %}
+        <td class="help">{{ s.summary }}</td>
+        <td style="text-align:right">
+          <form method="post" action="/schedules/{{ s.id }}/stop" style="display:inline">
+            <button class="btn ghost sm" onclick="return confirm('Stop this recurring task? Tasks already created stay on the board.')">Stop</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<script>
+function wtToggleRepeat(){
+  var cb = document.getElementById('repetitive'); if(!cb) return;
+  var on = cb.checked;
+  var oneoff = document.getElementById('oneoff-deadline');
+  var panel = document.getElementById('recur-panel');
+  oneoff.style.display = on ? 'none' : '';
+  panel.style.display = on ? '' : 'none';
+  oneoff.querySelectorAll('input').forEach(function(el){ el.disabled = on; });
+  panel.querySelectorAll('input,select').forEach(function(el){ el.disabled = !on; });
+  if(on) wtToggleFreq();
+}
+function wtToggleFreq(){
+  var fsel = document.getElementById('frequency'); if(!fsel) return;
+  var f = fsel.value;
+  var wk = document.getElementById('weekly-field');
+  var mo = document.getElementById('monthly-field');
+  wk.style.display = (f === 'weekly') ? '' : 'none';
+  mo.style.display = (f === 'monthly') ? '' : 'none';
+  wk.querySelector('select').disabled = (f !== 'weekly');
+  mo.querySelector('input').disabled = (f !== 'monthly');
+}
+document.addEventListener('DOMContentLoaded', wtToggleRepeat);
+</script>
 {% endblock %}

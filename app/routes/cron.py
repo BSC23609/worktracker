@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from .. import config
 from ..db import get_db
 from ..digests import run_daily_digests
+from ..services import generate_due_recurring_tasks
 from ..models import User
 
 router = APIRouter()
@@ -34,6 +35,11 @@ def daily_digests(key: str | None = Query(None),
                   x_cron_key: str | None = Header(None),
                   force: bool = Query(False),
                   db: Session = Depends(get_db)):
-    """Called by GitHub Actions every morning (IST). Protected by a shared secret."""
+    """Called by GitHub Actions every morning (IST). Protected by a shared secret.
+    First materialises any recurring-task instances due today, then sends digests
+    so the new instances appear in that morning's lists."""
     _check_secret(key, x_cron_key)
-    return run_daily_digests(db, force=force)
+    generated = generate_due_recurring_tasks(db)
+    result = run_daily_digests(db, force=force)
+    result["recurring_generated"] = generated
+    return result
