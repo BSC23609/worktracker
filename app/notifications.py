@@ -164,12 +164,15 @@ def send_whatsapp(db: Session, *, to: Optional[str], template: str, params: list
             "broadcast_name": config.WATI_BROADCAST_NAME,
             "parameters": [{"name": str(i + 1), "value": v} for i, v in enumerate(params)],
         }
+        # WATI's API-docs page shows the token already prefixed with "Bearer ".
+        # Accept it either way so we never send "Bearer Bearer ...".
+        tok = (config.WATI_TOKEN or "").strip()
+        auth = tok if tok.lower().startswith("bearer ") else f"Bearer {tok}"
         resp = requests.post(
             url,
             params={"whatsappNumber": number},
             json=payload,
-            headers={"Authorization": f"Bearer {config.WATI_TOKEN}",
-                     "Content-Type": "application/json"},
+            headers={"Authorization": auth, "Content-Type": "application/json"},
             timeout=20,
         )
         ok = resp.status_code < 400 and (resp.json().get("result") is not False
