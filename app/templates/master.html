@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Master · {{ app_name }}{% endblock %}
+{% block body %}
+<h1>Master — users &amp; roles</h1>
+<p class="help">Add staff, choose who is a Superadmin, and manage WhatsApp numbers. New users get the
+default password <code>{{ default_password }}</code> and must change it on first login.</p>
+
+<details class="card">
+  <summary>Add a user</summary>
+  <form method="post" action="/master/users/create" style="margin-top:.9rem">
+    <div class="row">
+      <div><label>Name</label><input name="name" required></div>
+      <div><label>Email</label><input type="email" name="email" required></div>
+    </div>
+    <div class="row">
+      <div><label>WhatsApp number</label><input name="whatsapp" placeholder="10-digit or with 91">
+        <p class="help">For reminders. 10 digits is assumed Indian (+91 added).</p></div>
+      <div><label>Role</label>
+        <select name="role">
+          <option value="user" selected>General user</option>
+          <option value="superadmin">Superadmin</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn">Add user</button>
+  </form>
+</details>
+
+<div class="card" style="padding:0">
+<table>
+  <thead><tr><th>Name</th><th>Email</th><th>WhatsApp</th><th>Role</th><th>Active</th><th></th></tr></thead>
+  <tbody>
+  {% for u in users %}
+  <tr>
+    <form method="post" action="/master/users/{{ u.id }}/update">
+      <td><input name="name" value="{{ u.name }}" style="min-width:130px"></td>
+      <td>{{ u.email }}</td>
+      <td><input name="whatsapp" value="{{ u.whatsapp or '' }}" style="min-width:120px"></td>
+      <td>
+        <select name="role" style="min-width:120px">
+          <option value="user" {% if u.role=='user' %}selected{% endif %}>General user</option>
+          <option value="superadmin" {% if u.role=='superadmin' %}selected{% endif %}>Superadmin</option>
+        </select>
+      </td>
+      <td style="text-align:center"><input type="checkbox" name="active" {% if u.active %}checked{% endif %} style="width:auto"></td>
+      <td style="white-space:nowrap">
+        <button class="btn sm">Save</button>
+    </form>
+        <form method="post" action="/master/users/{{ u.id }}/reset-password" style="display:inline">
+          <button class="btn ghost sm" onclick="return confirm('Reset {{ u.name }} to the default password?')">Reset pwd</button>
+        </form>
+      </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

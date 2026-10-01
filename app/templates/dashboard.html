@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Board · {{ app_name }}{% endblock %}
+
+{% macro status_badge(t) -%}
+  {% if t.current_deadline < today %}<span class="badge b-overdue">Overdue {{ (today - t.current_deadline).days }}d</span>
+  {% elif t.current_deadline == today %}<span class="badge b-today">Due today</span>
+  {% else %}<span class="badge b-ok">{{ (t.current_deadline - today).days }}d left</span>{% endif %}
+{%- endmacro %}
+
+{% block body %}
+<div class="pagehead">
+  <h1>{% if me.is_superadmin %}Team board{% else %}My tasks{% endif %}</h1>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="n">{{ tasks|length }}</div><div class="l">Open</div></div>
+  <div class="stat red"><div class="n">{{ overdue|length }}</div><div class="l">Overdue</div></div>
+  <div class="stat amber"><div class="n">{{ due_today|length }}</div><div class="l">Due today</div></div>
+  {% if me.is_superadmin %}<div class="stat"><div class="n">{{ people|length }}</div><div class="l">People</div></div>{% endif %}
+</div>
+
+<details class="card">
+  <summary>{% if me.is_superadmin %}Assign a new task{% else %}Raise a task for myself{% endif %}</summary>
+  <form method="post" action="/tasks/create" style="margin-top:.9rem">
+    <label>Task title</label>
+    <input name="title" required maxlength="300" placeholder="e.g. Submit GST reconciliation for September">
+    <label>Details (optional)</label>
+    <textarea name="description" placeholder="Any context or scope"></textarea>
+    <div class="row">
+      {% if me.is_superadmin %}
+      <div>
+        <label>Assign to</label>
+        <select name="assigned_to_id" required>
+          {% for u in assignable %}
+          <option value="{{ u.id }}" {% if u.id==me.id %}selected{% endif %}>{{ u.name }}{% if u.id==me.id %} (me){% endif %}{% if u.is_superadmin %} · superadmin{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+      <div>
+        <label>Deadline</label>
+        <input type="date" name="deadline" required value="{{ today }}">
+      </div>
+      <div>
+        <label>Priority</label>
+        <select name="priority">
+          <option value="medium" selected>Medium</option>
+          <option value="high">High</option>
+          <option value="low">Low</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn">Raise task &amp; notify</button>
+    <p class="help">The assignee gets an email and WhatsApp reminder with the deadline.</p>
+  </form>
+</details>
+
+<div class="card" style="padding:0">
+  {% if tasks %}
+  <table>
+    <thead><tr>
+      <th>Task</th>{% if me.is_superadmin %}<th>Assignee</th>{% endif %}
+      <th>Deadline</th><th>Status</th><th>Priority</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for t in tasks %}
+      <tr>
+        <td>
+          <a href="/tasks/{{ t.id }}"><strong>{{ t.title }}</strong></a>
+          {% if t.is_self_raised %}<span class="badge b-self">Self</span>{% endif %}
+          {% if t.extension_count %}<span class="badge b-pending">{{ t.extension_count }}× extended</span>{% endif %}
+        </td>
+        {% if me.is_superadmin %}<td>{{ t.assignee.name }}</td>{% endif %}
+        <td>
+          {{ t.current_deadline.strftime('%d-%b-%Y') }}
+          {% if t.original_deadline != t.current_deadline %}
+            <div class="help"><span class="strike">{{ t.original_deadline.strftime('%d-%b') }}</span> originally</div>
+          {% endif %}
+        </td>
+        <td>{{ status_badge(t) }}</td>
+        <td><span class="badge b-{{ t.priority }}">{{ t.priority }}</span></td>
+        <td><a class="btn ghost sm" href="/tasks/{{ t.id }}">Open</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">No open tasks. {% if not me.is_superadmin %}Use the form above to raise one.{% endif %}</div>
+  {% endif %}
+</div>
+{% endblock %}

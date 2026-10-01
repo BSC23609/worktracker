@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}{{ task.title }} · {{ app_name }}{% endblock %}
+{% block body %}
+<p><a href="/" class="muted">&larr; Back to board</a></p>
+
+<div class="card">
+  <div class="pagehead">
+    <h1 style="margin:0">{{ task.title }}</h1>
+    {% if task.status == 'completed' %}<span class="badge b-done">Completed</span>
+    {% elif task.is_overdue %}<span class="badge b-overdue">Overdue</span>
+    {% else %}<span class="badge b-pending">{{ task.status.replace('_',' ') }}</span>{% endif %}
+  </div>
+  {% if task.description %}<p>{{ task.description }}</p>{% endif %}
+  <div class="row" style="margin-top:.6rem">
+    <div><label>Assignee</label>{{ task.assignee.name }}</div>
+    <div><label>Raised by</label>{{ task.creator.name }}{% if task.is_self_raised %} (self){% endif %}</div>
+    <div><label>Priority</label><span class="badge b-{{ task.priority }}">{{ task.priority }}</span></div>
+    <div><label>Current deadline</label><strong>{{ task.current_deadline.strftime('%d-%b-%Y') }}</strong></div>
+  </div>
+  {% if task.status == 'completed' %}
+    <p class="help" style="margin-top:.8rem">Completed on {{ task.completed_at.strftime('%d-%b-%Y %H:%M') }}
+    {% if task.completion_note %} — {{ task.completion_note }}{% endif %}</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Deadline history</h2>
+  <p class="help">Every revision is kept on record. The original deadline never changes.</p>
+  <ul class="timeline">
+    {% for d in task.deadlines %}
+    <li class="{{ 'current' if loop.last and task.status != 'completed' else '' }}">
+      <span class="dl-date {{ 'strike' if not loop.last }}">{{ d.deadline.strftime('%d-%b-%Y') }}</span>
+      {% if d.is_original %}<span class="badge b-pending">Original</span>
+      {% elif loop.last %}<span class="badge b-ok">Current</span>
+      {% else %}<span class="badge b-pending">Revision {{ d.seq - 1 }}</span>{% endif %}
+      <div class="dl-meta">Set by {{ d.set_by.name }} on {{ d.created_at.strftime('%d-%b-%Y') }}</div>
+      {% if d.reason %}<div class="dl-reason"><strong>Reason:</strong> {{ d.reason }}</div>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+
+{% if can_act and task.status != 'completed' %}
+<div class="row">
+  <form method="post" action="/tasks/{{ task.id }}/extend" class="card">
+    <h2>Can't finish in time?</h2>
+    <p class="help">Enter a reason and a new deadline. The old deadline stays on record above.</p>
+    <label>Reason for the delay</label>
+    <textarea name="reason" required placeholder="Why the current deadline can't be met"></textarea>
+    <label>New deadline</label>
+    <input type="date" name="new_deadline" required min="{{ today }}">
+    <button class="btn">Revise deadline</button>
+  </form>
+
+  <form method="post" action="/tasks/{{ task.id }}/complete" class="card">
+    <h2>Mark as done</h2>
+    <p class="help">Close this task once the work is finished.</p>
+    <label>Completion note (optional)</label>
+    <textarea name="note" placeholder="Anything worth recording"></textarea>
+    <button class="btn">Mark completed</button>
+  </form>
+</div>
+{% endif %}
+
+{% if me.is_superadmin and task.status == 'completed' %}
+<form method="post" action="/tasks/{{ task.id }}/reopen" class="card">
+  <button class="btn ghost">Reopen task</button>
+</form>
+{% endif %}
+{% endblock %}

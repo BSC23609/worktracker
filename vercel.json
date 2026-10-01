@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "regions": ["sin1"],
+  "builds": [
+    { "src": "api/index.py", "use": "@vercel/python" }
+  ],
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/api/index" }
+  ]
+}
