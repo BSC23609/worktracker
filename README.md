@@ -20,6 +20,13 @@ WhatsApp reminders via **WATI**, email via **SMTP**, morning digests via **GitHu
   untick **Active** to disable them instead.
 - People sign in with their **email or employee code** (either works). Email is optional — staff who
   have no email log in with their employee code; they still get WhatsApp reminders.
+- **Forgot password via WhatsApp OTP.** The login page has **Forgot password?**: the user enters their
+  email or emp code, a 6-digit code is sent to their WhatsApp (and email, if they have one), they enter
+  it, then set a new password. Codes expire (default 10 min) and lock after 5 wrong tries. The code is
+  held in a signed, expiring cookie — no database table, and the plain code is never stored. This reaches
+  everyone, including the emp-code-only staff. Admin reset (Master tab) remains the fallback.
+- **"Email login details"** (Master tab) emails the temporary password to staff who have an email; the
+  emp-code-only staff sign in with the default password and their code, or use Forgot password.
 - The superadmin board is a **consolidated** view: open tasks grouped per person, overdue flagged.
 
 ## The deadline-history design (the core requirement)
@@ -85,6 +92,13 @@ the `WATI_TEMPLATE_*` env vars (defaults shown). Numbers like `{{1}}` are WATI's
 | `WATI_TEMPLATE_NEW_TASK` | `wt_new_task` | `{{1}}` assignee name · `{{2}}` task title · `{{3}}` deadline · `{{4}}` raised by |
 | `WATI_TEMPLATE_EMP_DIGEST` | `wt_daily_tasks` | `{{1}}` name · `{{2}}` open count · `{{3}}` overdue count |
 | `WATI_TEMPLATE_ADMIN_DIGEST` | `wt_admin_summary` | `{{1}}` admin name · `{{2}}` open count · `{{3}}` overdue count |
+| `WATI_TEMPLATE_OTP` | `wt_otp` | `{{1}}` the 6-digit code |
+| `WATI_TEMPLATE_WELCOME` | `wt_welcome3` | *(no variables — static body)* |
+
+For `wt_otp`, a simple body such as *"{{1}} is your Work Tracker verification code. It expires in 10
+minutes."* works. WhatsApp's **Authentication** template category is the intended one for codes and is
+the most reliable to get approved; a Utility template with the code as `{{1}}` also works. Until it's
+approved, the code still goes out by **email** to anyone who has one.
 
 `WATI_BASE_URL` has **no trailing slash** and includes the tenant id, e.g.
 `https://live-mt-server.wati.io/1234567`. `WATI_TOKEN` is the Bearer token from WATI → API Docs.

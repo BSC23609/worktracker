@@ -2,7 +2,7 @@
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sign in &middot; {{ app_name }}</title>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/style.css?v=6">
 <link rel="icon" href="/static/logos/group.png">
 </head><body>
 <main class="wrap" style="max-width:400px;margin-top:7vh">
@@ -19,6 +19,7 @@
     <input type="password" name="password" required autocomplete="current-password">
     <button class="btn" style="width:100%">Sign in</button>
   </form>
+  <p style="text-align:center;margin-top:1rem"><a href="/forgot">Forgot password?</a></p>
   {% include "_companies.html" %}
 </main>
 </body></html>

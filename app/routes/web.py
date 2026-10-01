@@ -15,8 +15,15 @@ from .. import config, notifications
 from ..auth import (
     authenticate,
     current_user,
+    generate_otp,
     hash_password,
+    make_otp_cookie,
+    make_reset_cookie,
     make_session_token,
+    otp_matches,
+    read_otp_cookie,
+    read_reset_cookie,
+    reissue_otp_cookie,
     require_superadmin,
     require_user,
     verify_password,
@@ -80,6 +87,98 @@ def login(request: Request, identifier: str = Form(...), password: str = Form(..
 def logout():
     resp = RedirectResponse("/login", status_code=303)
     resp.delete_cookie(config.SESSION_COOKIE)
+    return resp
+
+
+# ---- forgot password via OTP ----------------------------------------------
+OTP_COOKIE = "wt_otp"
+RESET_COOKIE = "wt_pwreset"
+
+
+@router.get("/forgot", response_class=HTMLResponse)
+def forgot_page(request: Request):
+    return templates.TemplateResponse(request, "forgot.html", {
+        "ok": request.query_params.get("ok"), "err": request.query_params.get("err")})
+
+
+@router.post("/forgot")
+def forgot(request: Request, identifier: str = Form(...), db: Session = Depends(get_db)):
+    ident = (identifier or "").strip()
+    user = db.scalar(select(User).where(func.lower(User.email) == ident.lower()))
+    if not user:
+        user = db.scalar(select(User).where(func.upper(User.emp_code) == ident.upper()))
+
+    resp = RedirectResponse("/verify-otp", status_code=303)
+    # Always go to the OTP screen (don't reveal whether the account exists).
+    if user and user.active and (user.whatsapp or user.email):
+        otp = generate_otp()
+        notifications.send_otp(db, user, otp)
+        resp.set_cookie(OTP_COOKIE, make_otp_cookie(user.id, otp, config.OTP_MAX_ATTEMPTS),
+                        max_age=config.OTP_TTL, httponly=True, samesite="lax")
+    return resp
+
+
+@router.get("/verify-otp", response_class=HTMLResponse)
+def verify_otp_page(request: Request):
+    return templates.TemplateResponse(request, "verify_otp.html", {
+        "err": request.query_params.get("err")})
+
+
+@router.post("/verify-otp")
+def verify_otp(request: Request, otp: str = Form(...), db: Session = Depends(get_db)):
+    token = request.cookies.get(OTP_COOKIE)
+    data = read_otp_cookie(token) if token else None
+    if not data:
+        return _flash("/forgot", "That code has expired. Please request a new one.", ok=False)
+    if not otp_matches(data, otp):
+        attempts_left = int(data.get("n", 1)) - 1
+        if attempts_left <= 0:
+            resp = _flash("/forgot", "Too many incorrect attempts. Please request a new code.", ok=False)
+            resp.delete_cookie(OTP_COOKIE)
+            return resp
+        # re-issue the challenge with the same code fingerprint but one fewer attempt
+        resp = _flash("/verify-otp", f"Incorrect code. {attempts_left} attempt(s) left.", ok=False)
+        resp.set_cookie(OTP_COOKIE, reissue_otp_cookie(data, attempts_left),
+                        max_age=config.OTP_TTL, httponly=True, samesite="lax")
+        return resp
+    # correct code -> authorise a password reset and move on
+    user = db.get(User, data["uid"])
+    if not user or not user.active:
+        return _flash("/forgot", "That code has expired. Please request a new one.", ok=False)
+    resp = RedirectResponse("/reset-password", status_code=303)
+    resp.delete_cookie(OTP_COOKIE)
+    resp.set_cookie(RESET_COOKIE, make_reset_cookie(user),
+                    max_age=config.PWRESET_TTL, httponly=True, samesite="lax")
+    return resp
+
+
+@router.get("/reset-password", response_class=HTMLResponse)
+def reset_password_page(request: Request, db: Session = Depends(get_db)):
+    token = request.cookies.get(RESET_COOKIE)
+    user = read_reset_cookie(db, token) if token else None
+    return templates.TemplateResponse(request, "set_password.html", {
+        "valid": user is not None, "name": user.name if user else None,
+        "err": request.query_params.get("err")})
+
+
+@router.post("/reset-password")
+def reset_password_submit(request: Request, new: str = Form(...), confirm: str = Form(...),
+                          db: Session = Depends(get_db)):
+    token = request.cookies.get(RESET_COOKIE)
+    user = read_reset_cookie(db, token) if token else None
+    if not user:
+        return _flash("/forgot", "Your session expired. Please start again.", ok=False)
+    if len(new) < 6:
+        return _flash("/reset-password", "Password must be at least 6 characters.", ok=False)
+    if new != confirm:
+        return _flash("/reset-password", "Passwords do not match.", ok=False)
+    if new == config.DEFAULT_PASSWORD:
+        return _flash("/reset-password", "Please choose a different password.", ok=False)
+    user.password_hash = hash_password(new)
+    user.must_reset = False
+    db.commit()
+    resp = _flash("/login", "Password updated. You can sign in now.")
+    resp.delete_cookie(RESET_COOKIE)
     return resp
 
 
@@ -303,6 +402,80 @@ def reopen(task_id: int, user: User = Depends(require_superadmin), db: Session =
     except TaskError as e:
         return _flash(f"/tasks/{task_id}", str(e), ok=False)
     return _flash(f"/tasks/{task_id}", "Task reopened.")
+
+
+@router.post("/master/send-credentials")
+def send_credentials_all(admin: User = Depends(require_superadmin), db: Session = Depends(get_db)):
+    if not config.NOTIFY_EMAIL_ENABLED:
+        return _flash("/master", "Email isn't configured yet (set the SMTP_* variables), "
+                                 "so no credentials were sent.", ok=False)
+    users = list(db.scalars(select(User).where(User.active.is_(True)).order_by(User.name)))
+    with_email = [u for u in users if u.email]
+    no_email = [u for u in users if not u.email]
+    sent = failed = 0
+    for u in with_email:
+        subject, body = notifications.render_credentials(u)
+        if notifications.send_email(db, to=u.email, subject=subject, body=body, kind="credentials"):
+            sent += 1
+        else:
+            failed += 1
+    db.commit()
+    msg = f"Login details emailed to {sent} user(s)."
+    if failed:
+        msg += f" {failed} failed to send."
+    if no_email:
+        msg += f" {len(no_email)} have no email — share their code + password directly."
+    return _flash("/master", msg, ok=(failed == 0))
+
+
+@router.post("/master/users/{user_id}/send-credentials")
+def send_credentials_one(user_id: int, admin: User = Depends(require_superadmin),
+                         db: Session = Depends(get_db)):
+    u = db.get(User, user_id)
+    if not u:
+        return _flash("/master", "User not found.", ok=False)
+    if not u.email:
+        return _flash("/master", f"{u.name} has no email — share their code + password directly.", ok=False)
+    if not config.NOTIFY_EMAIL_ENABLED:
+        return _flash("/master", "Email isn't configured yet (set the SMTP_* variables).", ok=False)
+    subject, body = notifications.render_credentials(u)
+    ok = notifications.send_email(db, to=u.email, subject=subject, body=body, kind="credentials")
+    db.commit()
+    return _flash("/master", f"Login details emailed to {u.name}." if ok
+                  else f"Could not send to {u.name} (check SMTP settings).", ok=ok)
+
+
+@router.post("/master/send-welcome")
+def send_welcome_all(admin: User = Depends(require_superadmin), db: Session = Depends(get_db)):
+    if not config.NOTIFY_WHATSAPP_ENABLED:
+        return _flash("/master", "WhatsApp (WATI) isn't configured, so no welcome messages "
+                                 "were sent.", ok=False)
+    users = list(db.scalars(select(User).where(User.active.is_(True))))
+    with_wa = [u for u in users if u.whatsapp]
+    sent = 0
+    for u in with_wa:
+        if notifications.send_welcome(db, u):
+            sent += 1
+    no_wa = len(users) - len(with_wa)
+    msg = f"Welcome message sent to {sent} of {len(with_wa)} user(s)."
+    if no_wa:
+        msg += f" {no_wa} have no WhatsApp number."
+    return _flash("/master", msg, ok=(sent == len(with_wa)))
+
+
+@router.post("/master/users/{user_id}/send-welcome")
+def send_welcome_one(user_id: int, admin: User = Depends(require_superadmin),
+                     db: Session = Depends(get_db)):
+    u = db.get(User, user_id)
+    if not u:
+        return _flash("/master", "User not found.", ok=False)
+    if not u.whatsapp:
+        return _flash("/master", f"{u.name} has no WhatsApp number.", ok=False)
+    if not config.NOTIFY_WHATSAPP_ENABLED:
+        return _flash("/master", "WhatsApp (WATI) isn't configured.", ok=False)
+    ok = notifications.send_welcome(db, u)
+    return _flash("/master", f"Welcome message sent to {u.name}." if ok
+                  else f"Couldn't send to {u.name} (check WATI settings).", ok=ok)
 
 
 # ---- master tab (superadmin) ----------------------------------------------

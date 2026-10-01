@@ -185,6 +185,58 @@ def send_whatsapp(db: Session, *, to: Optional[str], template: str, params: list
         return False
 
 
+def render_credentials(user: User) -> tuple[str, str]:
+    """Login-details email for a user (sent from the Master tab)."""
+    ids = []
+    if user.email:
+        ids.append(f"  Email      : {user.email}")
+    if user.emp_code:
+        ids.append(f"  Emp code   : {user.emp_code}")
+    id_block = "\n".join(ids) or "  (ask your admin)"
+    if user.must_reset:
+        pw = (f"  Temporary password: {config.DEFAULT_PASSWORD}\n"
+              f"  You'll be asked to set your own password on first sign-in.")
+    else:
+        pw = ("  Use the password you already set. If you've forgotten it, "
+              "ask an admin to reset it.")
+    subject = "Your Work Tracker login details"
+    body = (
+        f"Hi {user.name},\n\n"
+        f"You have access to the Bharat Steel Group Work Tracker.\n\n"
+        f"Open it here:\n  {config.BASE_URL}\n\n"
+        f"Sign in with your email or employee code:\n{id_block}\n\n"
+        f"{pw}\n\n"
+        f"— {config.SMTP_FROM_NAME}"
+    )
+    return subject, body
+
+
+def send_welcome(db: Session, user: User) -> bool:
+    """Send the WhatsApp welcome template. The template has no variables, so no
+    parameters are sent. (If you later add variables, pass them here in order.)"""
+    ok = send_whatsapp(db, to=user.whatsapp, template=config.WATI_TEMPLATE_WELCOME,
+                       params=[], kind="welcome")
+    db.commit()
+    return ok
+
+
+def send_otp(db: Session, user: User, otp: str) -> bool:
+    """Send a one-time code via WhatsApp (and email if available). Fail-soft."""
+    wa = send_whatsapp(db, to=user.whatsapp, template=config.WATI_TEMPLATE_OTP,
+                       params=[otp], kind="otp")
+    em = False
+    if user.email:
+        subject = f"{config.APP_NAME} verification code"
+        body = (f"Hi {user.name},\n\n"
+                f"Your {config.APP_NAME} verification code is: {otp}\n"
+                f"It expires in {max(1, config.OTP_TTL // 60)} minutes.\n\n"
+                f"If you didn't request this, you can ignore this message.\n\n"
+                f"— {config.SMTP_FROM_NAME}")
+        em = send_email(db, to=user.email, subject=subject, body=body, kind="otp")
+    db.commit()
+    return bool(wa or em)
+
+
 def notify_new_task(db: Session, task: Task) -> None:
     subject, body, params = render_new_task(task)
     send_email(db, to=task.assignee.email, subject=subject, body=body,

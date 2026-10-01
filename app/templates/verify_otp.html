@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Enter code &middot; {{ app_name }}</title>
+<link rel="stylesheet" href="/static/style.css?v=6">
+<link rel="icon" href="/static/logos/group.png">
+</head><body>
+<main class="wrap" style="max-width:400px;margin-top:7vh">
+  <div style="text-align:center;margin-bottom:1.2rem">
+    <img src="/static/logos/group.png" alt="The Bharat Steel Group" class="login-logo">
+    <h1 style="margin-top:.4rem">Enter the code</h1>
+  </div>
+  {% if err %}<div class="flash err">{{ err }}</div>{% endif %}
+  <form method="post" action="/verify-otp" class="card">
+    <p class="help">We sent a one-time code to your WhatsApp (and email, if you have one). Enter it below.</p>
+    <label>Verification code</label>
+    <input type="text" name="otp" required autofocus inputmode="numeric" autocomplete="one-time-code"
+           pattern="[0-9]*" maxlength="8" placeholder="6-digit code">
+    <button class="btn" style="width:100%">Verify</button>
+  </form>
+  <p style="text-align:center;margin-top:1rem"><a href="/forgot">Didn't get a code? Try again</a></p>
+</main>
+</body></html>

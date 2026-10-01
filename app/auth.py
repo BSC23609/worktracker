@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from typing import Optional
 
+import hashlib
+import hmac
+import secrets
+
 import bcrypt
 from fastapi import Depends, HTTPException, Request, status
-from itsdangerous import BadSignature, URLSafeTimedSerializer
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -13,6 +17,60 @@ from .db import get_db
 from .models import ROLE_SUPERADMIN, User
 
 _serializer = URLSafeTimedSerializer(config.SECRET_KEY, salt="wt-session")
+_otp_serializer = URLSafeTimedSerializer(config.SECRET_KEY, salt="wt-otp")
+_reset_serializer = URLSafeTimedSerializer(config.SECRET_KEY, salt="wt-pwreset")
+
+
+def _hash_tail(password_hash: str) -> str:
+    return (password_hash or "")[-12:]
+
+
+def generate_otp(length: int | None = None) -> str:
+    n = length or config.OTP_LENGTH
+    return "".join(secrets.choice("0123456789") for _ in range(n))
+
+
+def _otp_fingerprint(otp: str) -> str:
+    return hmac.new(config.SECRET_KEY.encode(), otp.encode(), hashlib.sha256).hexdigest()[:20]
+
+
+def make_otp_cookie(user_id: int, otp: str, attempts: int) -> str:
+    """Signed, expiring holder for an OTP challenge (stores a fingerprint, not the code)."""
+    return _otp_serializer.dumps({"uid": user_id, "fp": _otp_fingerprint(otp), "n": attempts})
+
+
+def read_otp_cookie(token: str) -> Optional[dict]:
+    try:
+        data = _otp_serializer.loads(token, max_age=config.OTP_TTL)
+        return data if isinstance(data, dict) else None
+    except (BadSignature, SignatureExpired, ValueError, TypeError):
+        return None
+
+
+def otp_matches(data: dict, otp: str) -> bool:
+    return bool(data) and hmac.compare_digest(data.get("fp", ""), _otp_fingerprint((otp or "").strip()))
+
+
+def reissue_otp_cookie(data: dict, attempts: int) -> str:
+    """Re-sign an existing OTP challenge with fewer attempts (same code fingerprint)."""
+    return _otp_serializer.dumps({"uid": data["uid"], "fp": data["fp"], "n": attempts})
+
+
+def make_reset_cookie(user: User) -> str:
+    """Issued only after a correct OTP; authorises setting a new password. Single-use:
+    it stops working once the password changes (hash tail no longer matches)."""
+    return _reset_serializer.dumps({"uid": user.id, "h": _hash_tail(user.password_hash)})
+
+
+def read_reset_cookie(db: Session, token: str) -> Optional[User]:
+    try:
+        data = _reset_serializer.loads(token, max_age=config.PWRESET_TTL)
+    except (BadSignature, SignatureExpired, ValueError, TypeError):
+        return None
+    user = db.get(User, data.get("uid")) if isinstance(data, dict) else None
+    if not user or not user.active or data.get("h") != _hash_tail(user.password_hash):
+        return None
+    return user
 
 
 def _enc(raw: str) -> bytes:

@@ -56,8 +56,13 @@ select{appearance:none;-webkit-appearance:none;-moz-appearance:none;padding-righ
   background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235a6b80' stroke-width='3'><path d='M6 9l6 6 6-6'/></svg>");
   background-repeat:no-repeat;background-position:right .7rem center}
 /* grid row: columns wrap cleanly instead of overlapping */
-.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:.9rem;align-items:start}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem 1.2rem;align-items:start}
 .row>*{min-width:0}
+.row input,.row select,.row textarea{width:100%}
+/* stacked fields: one per line, guaranteed no side-by-side crowding */
+.stacked{display:flex;flex-direction:column;gap:.4rem}
+.stacked>div{width:100%;max-width:520px}
+.stacked input,.stacked select{width:100%}
 .btn{display:inline-block;background:var(--blue);color:#fff;border:0;border-radius:6px;
   padding:.55rem 1rem;font:inherit;font-weight:600;cursor:pointer;margin-top:.8rem}
 .btn:hover{background:#1668ad;text-decoration:none}

@@ -20,6 +20,11 @@ SECRET_KEY = os.getenv("SECRET_KEY", "dev-insecure-change-me")
 SESSION_COOKIE = "wt_session"
 SESSION_MAX_AGE = int(os.getenv("SESSION_MAX_AGE", str(60 * 60 * 24 * 180)))  # 180 days
 DEFAULT_PASSWORD = os.getenv("DEFAULT_PASSWORD", "Bharat@123")
+# Forgot-password OTP settings.
+OTP_TTL = int(os.getenv("OTP_TTL", "600"))            # 10 minutes to enter the code
+OTP_LENGTH = int(os.getenv("OTP_LENGTH", "6"))
+OTP_MAX_ATTEMPTS = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
+PWRESET_TTL = int(os.getenv("PWRESET_TTL", "600"))    # window to set the new password after OTP
 
 # ---- App identity ---------------------------------------------------------
 APP_NAME = os.getenv("APP_NAME", "Work Tracker")
@@ -46,6 +51,8 @@ WATI_TOKEN = os.getenv("WATI_TOKEN", "")  # the long Bearer token from WATI > AP
 WATI_TEMPLATE_NEW_TASK = os.getenv("WATI_TEMPLATE_NEW_TASK", "wt_new_task")
 WATI_TEMPLATE_EMP_DIGEST = os.getenv("WATI_TEMPLATE_EMP_DIGEST", "wt_daily_tasks")
 WATI_TEMPLATE_ADMIN_DIGEST = os.getenv("WATI_TEMPLATE_ADMIN_DIGEST", "wt_admin_summary")
+WATI_TEMPLATE_OTP = os.getenv("WATI_TEMPLATE_OTP", "wt_otp")
+WATI_TEMPLATE_WELCOME = os.getenv("WATI_TEMPLATE_WELCOME", "wt_welcome3")
 WATI_BROADCAST_NAME = os.getenv("WATI_BROADCAST_NAME", "worktracker")
 WATI_DEFAULT_CC = os.getenv("WATI_DEFAULT_CC", "91")  # country code prepended to 10-digit numbers
 

@@ -6,6 +6,18 @@
 employee code</strong> (either works). New users get the default password <code>{{ default_password }}</code>
 and must change it on first login.</p>
 
+<div class="card" style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap">
+  <form method="post" action="/master/send-welcome" style="margin:0">
+    <button class="btn" onclick="return confirm('Send the WhatsApp welcome message to every active staff member who has a WhatsApp number?')">Send welcome to everyone</button>
+  </form>
+  <form method="post" action="/master/send-credentials" style="margin:0">
+    <button class="btn ghost" onclick="return confirm('Email login details (with temporary password) to everyone who has an email?')">Email login details</button>
+  </form>
+  <span class="help" style="margin:0;flex-basis:100%">The <strong>welcome</strong> message goes out on WhatsApp.
+  Staff with no email sign in with their employee code and the default password <code>{{ default_password }}</code>,
+  or use <strong>Forgot password</strong> for a one-time code on WhatsApp.</span>
+</div>
+
 <details class="card">
   <summary>Add a user</summary>
   <form method="post" action="/master/users/create" style="margin-top:.9rem">
@@ -51,6 +63,16 @@ and must change it on first login.</p>
     <td style="white-space:nowrap">
       <form id="edit-{{ u.id }}" method="post" action="/master/users/{{ u.id }}/update" style="display:inline"></form>
       <button form="edit-{{ u.id }}" class="btn sm">Save</button>
+      {% if u.whatsapp %}
+      <form method="post" action="/master/users/{{ u.id }}/send-welcome" style="display:inline">
+        <button class="btn ghost sm" onclick="return confirm('Send welcome message to {{ u.name }}?')">Welcome</button>
+      </form>
+      {% endif %}
+      {% if u.email %}
+      <form method="post" action="/master/users/{{ u.id }}/send-credentials" style="display:inline">
+        <button class="btn ghost sm" onclick="return confirm('Email login details to {{ u.name }}?')">Send login</button>
+      </form>
+      {% endif %}
       <form method="post" action="/master/users/{{ u.id }}/reset-password" style="display:inline">
         <button class="btn ghost sm" onclick="return confirm('Reset {{ u.name }} to the default password?')">Reset pwd</button>
       </form>

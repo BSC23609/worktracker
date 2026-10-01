@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forgot password &middot; {{ app_name }}</title>
+<link rel="stylesheet" href="/static/style.css?v=6">
+<link rel="icon" href="/static/logos/group.png">
+</head><body>
+<main class="wrap" style="max-width:400px;margin-top:7vh">
+  <div style="text-align:center;margin-bottom:1.2rem">
+    <img src="/static/logos/group.png" alt="The Bharat Steel Group" class="login-logo">
+    <h1 style="margin-top:.4rem">Forgot password</h1>
+  </div>
+  {% if ok %}<div class="flash ok">{{ ok }}</div>{% endif %}
+  {% if err %}<div class="flash err">{{ err }}</div>{% endif %}
+  <form method="post" action="/forgot" class="card">
+    <label>Email or employee code</label>
+    <input type="text" name="identifier" required autofocus
+           placeholder="e.g. you@bharatsteels.in or BSC/004">
+    <p class="help">We'll send a one-time code to the WhatsApp number (and email) on file so you can set a new password.</p>
+    <button class="btn" style="width:100%">Send code</button>
+  </form>
+  <p style="text-align:center;margin-top:1rem"><a href="/login">Back to sign in</a></p>
+</main>
+</body></html>
