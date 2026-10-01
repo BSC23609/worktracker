@@ -5,7 +5,7 @@ from typing import Optional
 import bcrypt
 from fastapi import Depends, HTTPException, Request, status
 from itsdangerous import BadSignature, URLSafeTimedSerializer
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from . import config
@@ -43,8 +43,14 @@ def read_session_token(token: str) -> Optional[int]:
         return None
 
 
-def authenticate(db: Session, email: str, password: str) -> Optional[User]:
-    user = db.scalar(select(User).where(User.email == email.strip().lower()))
+def authenticate(db: Session, identifier: str, password: str) -> Optional[User]:
+    ident = (identifier or "").strip()
+    if not ident:
+        return None
+    # Match by email (case-insensitive) first, then by employee code.
+    user = db.scalar(select(User).where(func.lower(User.email) == ident.lower()))
+    if not user:
+        user = db.scalar(select(User).where(func.upper(User.emp_code) == ident.upper()))
     if not user or not user.active:
         return None
     if not verify_password(password, user.password_hash):

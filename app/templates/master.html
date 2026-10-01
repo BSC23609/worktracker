@@ -2,19 +2,21 @@
 {% block title %}Master &middot; {{ app_name }}{% endblock %}
 {% block body %}
 <h1>Master &mdash; users &amp; roles</h1>
-<p class="help">Add staff, choose who is a Superadmin, and manage WhatsApp numbers. New users get the
-default password <code>{{ default_password }}</code> and must change it on first login.</p>
+<p class="help">Add staff and choose who is a Superadmin. People log in with their <strong>email or
+employee code</strong> (either works). New users get the default password <code>{{ default_password }}</code>
+and must change it on first login.</p>
 
 <details class="card">
   <summary>Add a user</summary>
   <form method="post" action="/master/users/create" style="margin-top:.9rem">
     <div class="row">
       <div><label>Name</label><input name="name" required></div>
-      <div><label>Email</label><input type="email" name="email" required></div>
+      <div><label>Employee code</label><input name="emp_code" placeholder="e.g. BSC/004"></div>
     </div>
     <div class="row">
-      <div><label>WhatsApp number</label><input name="whatsapp" placeholder="10-digit or with 91">
-        <p class="help">For reminders. 10 digits is assumed Indian (+91 added).</p></div>
+      <div><label>Email <span class="help" style="display:inline">(optional if emp code given)</span></label>
+        <input type="email" name="email"></div>
+      <div><label>WhatsApp number</label><input name="whatsapp" placeholder="10-digit or with 91"></div>
       <div><label>Role</label>
         <select name="role">
           <option value="user" selected>General user</option>
@@ -22,25 +24,23 @@ default password <code>{{ default_password }}</code> and must change it on first
         </select>
       </div>
     </div>
+    <p class="help">Give at least one of email or employee code so they can sign in.</p>
     <button class="btn">Add user</button>
   </form>
 </details>
 
 <div class="card" style="padding:0">
 <table>
-  <thead><tr><th>Name</th><th>Email</th><th>WhatsApp</th><th>Role</th><th>Active</th><th>Actions</th></tr></thead>
+  <thead><tr><th>Name</th><th>Emp code</th><th>Email</th><th>WhatsApp</th><th>Role</th><th>Active</th><th>Actions</th></tr></thead>
   <tbody>
   {% for u in users %}
   <tr>
+    <td><input form="edit-{{ u.id }}" name="name" value="{{ u.name }}" style="min-width:120px"></td>
+    <td><input form="edit-{{ u.id }}" name="emp_code" value="{{ u.emp_code or '' }}" style="min-width:90px"></td>
+    <td class="help">{{ u.email or '—' }}</td>
+    <td><input form="edit-{{ u.id }}" name="whatsapp" value="{{ u.whatsapp or '' }}" style="min-width:110px"></td>
     <td>
-      <input form="edit-{{ u.id }}" name="name" value="{{ u.name }}" style="min-width:120px">
-    </td>
-    <td>{{ u.email }}</td>
-    <td>
-      <input form="edit-{{ u.id }}" name="whatsapp" value="{{ u.whatsapp or '' }}" style="min-width:110px">
-    </td>
-    <td>
-      <select form="edit-{{ u.id }}" name="role" style="min-width:120px">
+      <select form="edit-{{ u.id }}" name="role" style="min-width:115px">
         <option value="user" {% if u.role=='user' %}selected{% endif %}>General user</option>
         <option value="superadmin" {% if u.role=='superadmin' %}selected{% endif %}>Superadmin</option>
       </select>
@@ -65,6 +65,7 @@ default password <code>{{ default_password }}</code> and must change it on first
   </tbody>
 </table>
 </div>
-<p class="help">Deleting is only possible for a user with no tasks on record &mdash; otherwise untick
-<strong>Active</strong> to disable the account while keeping their task history intact.</p>
+<p class="help">Email is optional &mdash; a user with only an employee code logs in with that code.
+Deleting is only possible for a user with no tasks on record; otherwise untick
+<strong>Active</strong> to disable the account while keeping their task history.</p>
 {% endblock %}

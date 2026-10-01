@@ -62,12 +62,12 @@ def login_page(request: Request, user: Optional[User] = Depends(current_user)):
 
 
 @router.post("/auth/login")
-def login(request: Request, email: str = Form(...), password: str = Form(...),
+def login(request: Request, identifier: str = Form(...), password: str = Form(...),
           db: Session = Depends(get_db)):
-    user = authenticate(db, email, password)
+    user = authenticate(db, identifier, password)
     if not user:
         return templates.TemplateResponse(
-            request, "login.html", {"error": "Invalid email or password."},
+            request, "login.html", {"error": "Invalid credentials."},
             status_code=401,
         )
     resp = RedirectResponse("/", status_code=303)
@@ -318,27 +318,33 @@ def master(request: Request, db: Session = Depends(get_db),
 
 
 @router.post("/master/users/create")
-def create_user(name: str = Form(...), email: str = Form(...), whatsapp: str = Form(""),
-                role: str = Form("user"), admin: User = Depends(require_superadmin),
-                db: Session = Depends(get_db)):
+def create_user(name: str = Form(...), email: str = Form(""), emp_code: str = Form(""),
+                whatsapp: str = Form(""), role: str = Form("user"),
+                admin: User = Depends(require_superadmin), db: Session = Depends(get_db)):
     email = email.strip().lower()
-    if not name.strip() or not email:
-        return _flash("/master", "Name and email are required.", ok=False)
+    emp_code = emp_code.strip().upper()
+    if not name.strip():
+        return _flash("/master", "Name is required.", ok=False)
+    if not email and not emp_code:
+        return _flash("/master", "Give an email or an employee code so they can log in.", ok=False)
     if role not in ROLES:
         role = "user"
-    if db.scalar(select(User).where(User.email == email)):
+    if email and db.scalar(select(User).where(func.lower(User.email) == email)):
         return _flash("/master", "A user with that email already exists.", ok=False)
-    db.add(User(name=name.strip(), email=email,
+    if emp_code and db.scalar(select(User).where(func.upper(User.emp_code) == emp_code)):
+        return _flash("/master", "A user with that employee code already exists.", ok=False)
+    db.add(User(name=name.strip(), email=email or None, emp_code=emp_code or None,
                 whatsapp=notifications.normalise_whatsapp(whatsapp),
                 role=role, password_hash=hash_password(config.DEFAULT_PASSWORD),
                 must_reset=True, active=True))
     db.commit()
-    return _flash("/master", f"User added. Default password is '{config.DEFAULT_PASSWORD}'.")
+    who = email or emp_code
+    return _flash("/master", f"User added ({who}). Default password is '{config.DEFAULT_PASSWORD}'.")
 
 
 @router.post("/master/users/{user_id}/update")
-def update_user(user_id: int, name: str = Form(...), whatsapp: str = Form(""),
-                role: str = Form("user"), active: str = Form("on"),
+def update_user(user_id: int, name: str = Form(...), emp_code: str = Form(""),
+                whatsapp: str = Form(""), role: str = Form("user"), active: str = Form("off"),
                 admin: User = Depends(require_superadmin), db: Session = Depends(get_db)):
     u = db.get(User, user_id)
     if not u:
@@ -351,7 +357,15 @@ def update_user(user_id: int, name: str = Form(...), whatsapp: str = Form(""),
                                               User.active.is_(True), User.id != u.id))
         if not others:
             return _flash("/master", "At least one active superadmin must remain.", ok=False)
+    emp_code = emp_code.strip().upper()
+    if emp_code:
+        clash = db.scalar(select(User).where(func.upper(User.emp_code) == emp_code, User.id != u.id))
+        if clash:
+            return _flash("/master", "That employee code is already in use.", ok=False)
+    if not emp_code and not u.email:
+        return _flash("/master", "This user has no email, so an employee code is required.", ok=False)
     u.name = name.strip() or u.name
+    u.emp_code = emp_code or None
     u.whatsapp = notifications.normalise_whatsapp(whatsapp)
     u.role = role if role in ROLES else u.role
     u.active = (active == "on")

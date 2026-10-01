@@ -35,7 +35,8 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    emp_code: Mapped[Optional[str]] = mapped_column(String(40), unique=True, index=True, default=None)
+    email: Mapped[Optional[str]] = mapped_column(String(255), unique=True, index=True, default=None)
     name: Mapped[str] = mapped_column(String(255))
     whatsapp: Mapped[Optional[str]] = mapped_column(String(32), default=None)
     role: Mapped[str] = mapped_column(String(32), default=ROLE_USER)

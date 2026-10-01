@@ -12,8 +12,9 @@
   </div>
   {% if error %}<div class="flash err">{{ error }}</div>{% endif %}
   <form method="post" action="/auth/login" class="card">
-    <label>Email</label>
-    <input type="email" name="email" required autofocus autocomplete="username">
+    <label>Email or employee code</label>
+    <input type="text" name="identifier" required autofocus autocomplete="username"
+           placeholder="e.g. you@bharatsteels.in or BSC/004">
     <label>Password</label>
     <input type="password" name="password" required autocomplete="current-password">
     <button class="btn" style="width:100%">Sign in</button>

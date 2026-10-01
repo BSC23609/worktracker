@@ -16,8 +16,10 @@ WhatsApp reminders via **WATI**, email via **SMTP**, morning digests via **GitHu
 - Tasks can carry **attachments** (any related documents). Files are stored in the database;
   each upload is capped at 4 MB (Vercel's request-body limit), up to 10 per task.
 - A **Master** tab (superadmin only) **adds, edits and deletes** users and manages roles and
-  WhatsApp numbers. A user tied to existing tasks can't be hard-deleted (it would orphan history) —
+  WhatsApp numbers. A user tied to existing tasks can't be hard-deleted (it would orphan history);
   untick **Active** to disable them instead.
+- People sign in with their **email or employee code** (either works). Email is optional — staff who
+  have no email log in with their employee code; they still get WhatsApp reminders.
 - The superadmin board is a **consolidated** view: open tasks grouped per person, overdue flagged.
 
 ## The deadline-history design (the core requirement)
@@ -67,10 +69,11 @@ tests/                    29 tests (deadline history, auth, notifications, full 
 
 ### Updating the schema later
 
-`scripts/neon_setup.sql` is idempotent (every statement is `IF NOT EXISTS` / `ON CONFLICT DO
-NOTHING`). When the data model gains a table or index, just re-run that whole file in the Neon SQL
-Editor — it adds what's missing and leaves existing tables, rows and the seeded superadmins
-untouched. (Re-running `scripts/init_db.py` does the same via `create_all`.)
+`scripts/neon_setup.sql` is the full fresh-install script (schema + indexes + the whole roster) and
+is idempotent. `scripts/add_emp_code.sql` is a one-time migration for a database that predates
+employee-code login — it makes `email` optional, adds the `emp_code` column, and imports/backfills the
+roster (existing rows keep their password, name and role). For any later model change you can simply
+re-run `neon_setup.sql` or `scripts/init_db.py` — both only add what's missing.
 
 ## WATI templates to create (and get approved)
 
