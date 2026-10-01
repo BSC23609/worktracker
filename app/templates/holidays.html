@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Holidays &middot; {{ app_name }}{% endblock %}
+{% block body %}
+<h1>Holiday master</h1>
+<p class="help">Dates added here are treated as non-working days: the daily digest is not sent on them
+(Sundays are always skipped too). Recurring tasks are still created, and appear in the next working
+day's digest.</p>
+
+<details class="card" open>
+  <summary>Add a holiday</summary>
+  <form method="post" action="/holidays/add" style="margin-top:.9rem">
+    <div class="row">
+      <div><label>Date</label><input type="date" name="day" required></div>
+      <div><label>Label <span class="help" style="display:inline">(optional)</span></label>
+        <input name="label" placeholder="e.g. Diwali"></div>
+    </div>
+    <button class="btn">Add holiday</button>
+  </form>
+</details>
+
+<div class="card" style="padding:0">
+  <table>
+    <thead><tr><th>Date</th><th>Day</th><th>Occasion</th><th></th></tr></thead>
+    <tbody>
+    {% if upcoming %}
+      <tr><td colspan="4" class="help" style="background:var(--g50)">Upcoming</td></tr>
+      {% for h in upcoming %}
+      <tr>
+        <td class="mono">{{ h.day.strftime('%d-%b-%Y') }}</td>
+        <td>{{ h.day.strftime('%A') }}</td>
+        <td>{{ h.label or '—' }}</td>
+        <td style="text-align:right">
+          <form method="post" action="/holidays/{{ h.id }}/delete" style="display:inline">
+            <button class="btn ghost sm" onclick="return confirm('Remove this holiday?')">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    {% endif %}
+    {% if past %}
+      <tr><td colspan="4" class="help" style="background:var(--g50)">Past</td></tr>
+      {% for h in past %}
+      <tr>
+        <td class="mono">{{ h.day.strftime('%d-%b-%Y') }}</td>
+        <td>{{ h.day.strftime('%A') }}</td>
+        <td>{{ h.label or '—' }}</td>
+        <td style="text-align:right">
+          <form method="post" action="/holidays/{{ h.id }}/delete" style="display:inline">
+            <button class="btn ghost sm" onclick="return confirm('Remove this holiday?')">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    {% endif %}
+    {% if not upcoming and not past %}
+      <tr><td colspan="4" class="empty">No holidays added yet.</td></tr>
+    {% endif %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

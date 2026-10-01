@@ -13,8 +13,10 @@ WhatsApp reminders via **WATI**, email via **SMTP**, morning digests via **GitHu
   morning job materialises each occurrence as a normal task on the assignee's board as it falls due, and
   they mark each done. The board lists active schedules with a **Stop** button (already-created tasks stay).
 - On raising a task, the assignee gets an **email + WhatsApp** reminder with the task and deadline.
-- **Every morning** each person gets their pending-task list; each superadmin also gets a
-  **consolidated** list of everyone's open tasks (overdue flagged).
+- **Every morning (10:00 IST)** each person gets their pending-task list; each superadmin also gets a
+  **consolidated** list of everyone's open tasks (overdue flagged). The digest is **skipped on Sundays
+  and on any date in the Holiday Master** (superadmins manage these on the **Holidays** page). Recurring
+  tasks are still generated daily, so they surface in the next working day's digest.
 - If someone can't finish in time they enter a **reason** and a **new deadline**. The old
   deadline is **never overwritten** — the full history of every deadline and reason is kept on
   the task's detail page.

@@ -210,6 +210,18 @@ class TaskSchedule(Base):
         return f"{self.frequency_label} · {span} · {due}"
 
 
+class Holiday(Base):
+    """A non-working date fed in by a superadmin. Daily digests skip these (and Sundays)."""
+
+    __tablename__ = "holidays"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    day: Mapped[date] = mapped_column(Date, unique=True, index=True)
+    label: Mapped[Optional[str]] = mapped_column(String(200), default=None)
+    created_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class NotificationLog(Base):
     """Audit of every notification, and the de-dupe key for daily digests."""
 

@@ -7,8 +7,19 @@ from sqlalchemy.orm import Session
 
 from . import config, notifications
 from .db import today_ist
-from .models import NotificationLog, ROLE_SUPERADMIN, User
+from .models import Holiday, NotificationLog, ROLE_SUPERADMIN, User
 from .services import all_open_tasks, open_tasks_for
+
+
+def is_holiday(db: Session, d: date) -> bool:
+    return db.scalar(select(Holiday.id).where(Holiday.day == d)) is not None
+
+
+def is_working_day(db: Session, d: date) -> bool:
+    """A day digests should go out on: not Sunday and not a fed-in holiday."""
+    if d.weekday() == 6:  # Sunday (Mon=0 .. Sun=6)
+        return False
+    return not is_holiday(db, d)
 
 
 def _already_sent(db: Session, dedupe_key: str) -> bool:

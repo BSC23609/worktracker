@@ -29,7 +29,7 @@ from ..auth import (
     verify_password,
 )
 from ..db import get_db, today_ist
-from ..models import (OPEN_STATUSES, ROLE_SUPERADMIN, ROLES, WEEKDAYS, Task,
+from ..models import (OPEN_STATUSES, ROLE_SUPERADMIN, ROLES, WEEKDAYS, Holiday, Task,
                       TaskAttachment, TaskSchedule, User)
 from ..services import (
     TaskError,
@@ -629,3 +629,41 @@ def delete_user(user_id: int, admin: User = Depends(require_superadmin),
     db.delete(u)
     db.commit()
     return _flash("/master", f"{name} deleted.")
+
+
+# ---- holiday master (superadmin) ------------------------------------------
+@router.get("/holidays", response_class=HTMLResponse)
+def holidays_page(request: Request, db: Session = Depends(get_db),
+                  user: User = Depends(require_superadmin)):
+    today = today_ist()
+    items = list(db.scalars(select(Holiday).order_by(Holiday.day.desc())))
+    upcoming = [h for h in items if h.day >= today]
+    past = [h for h in items if h.day < today]
+    return templates.TemplateResponse(request, "holidays.html", {
+        "me": user, "today": today, "upcoming": upcoming, "past": past,
+        "ok": request.query_params.get("ok"), "err": request.query_params.get("err"),
+    })
+
+
+@router.post("/holidays/add")
+def holiday_add(day: str = Form(...), label: str = Form(""),
+                admin: User = Depends(require_superadmin), db: Session = Depends(get_db)):
+    try:
+        d = _parse_date(day)
+    except TaskError as e:
+        return _flash("/holidays", str(e), ok=False)
+    if db.scalar(select(Holiday).where(Holiday.day == d)):
+        return _flash("/holidays", "That date is already marked as a holiday.", ok=False)
+    db.add(Holiday(day=d, label=label.strip() or None, created_by_id=admin.id))
+    db.commit()
+    return _flash("/holidays", f"Holiday added for {d.strftime('%d-%b-%Y')}.")
+
+
+@router.post("/holidays/{holiday_id}/delete")
+def holiday_delete(holiday_id: int, admin: User = Depends(require_superadmin),
+                   db: Session = Depends(get_db)):
+    h = db.get(Holiday, holiday_id)
+    if h:
+        db.delete(h)
+        db.commit()
+    return _flash("/holidays", "Holiday removed.")

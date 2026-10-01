@@ -17,6 +17,7 @@
   <nav class="topnav">
     <a href="/">Board</a>
     {% if me.is_superadmin %}<a href="/master">Master</a>{% endif %}
+    {% if me.is_superadmin %}<a href="/holidays">Holidays</a>{% endif %}
     <span class="who">{{ me.name }}{% if me.is_superadmin %} &middot; Superadmin{% endif %}</span>
     <a href="/change-password" class="muted">Password</a>
     <a href="/logout" class="muted">Logout</a>
