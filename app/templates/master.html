@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Master · {{ app_name }}{% endblock %}
+{% block title %}Master &middot; {{ app_name }}{% endblock %}
 {% block body %}
-<h1>Master — users &amp; roles</h1>
+<h1>Master &mdash; users &amp; roles</h1>
 <p class="help">Add staff, choose who is a Superadmin, and manage WhatsApp numbers. New users get the
 default password <code>{{ default_password }}</code> and must change it on first login.</p>
 
@@ -28,31 +28,43 @@ default password <code>{{ default_password }}</code> and must change it on first
 
 <div class="card" style="padding:0">
 <table>
-  <thead><tr><th>Name</th><th>Email</th><th>WhatsApp</th><th>Role</th><th>Active</th><th></th></tr></thead>
+  <thead><tr><th>Name</th><th>Email</th><th>WhatsApp</th><th>Role</th><th>Active</th><th>Actions</th></tr></thead>
   <tbody>
   {% for u in users %}
   <tr>
-    <form method="post" action="/master/users/{{ u.id }}/update">
-      <td><input name="name" value="{{ u.name }}" style="min-width:130px"></td>
-      <td>{{ u.email }}</td>
-      <td><input name="whatsapp" value="{{ u.whatsapp or '' }}" style="min-width:120px"></td>
-      <td>
-        <select name="role" style="min-width:120px">
-          <option value="user" {% if u.role=='user' %}selected{% endif %}>General user</option>
-          <option value="superadmin" {% if u.role=='superadmin' %}selected{% endif %}>Superadmin</option>
-        </select>
-      </td>
-      <td style="text-align:center"><input type="checkbox" name="active" {% if u.active %}checked{% endif %} style="width:auto"></td>
-      <td style="white-space:nowrap">
-        <button class="btn sm">Save</button>
-    </form>
-        <form method="post" action="/master/users/{{ u.id }}/reset-password" style="display:inline">
-          <button class="btn ghost sm" onclick="return confirm('Reset {{ u.name }} to the default password?')">Reset pwd</button>
-        </form>
-      </td>
+    <td>
+      <input form="edit-{{ u.id }}" name="name" value="{{ u.name }}" style="min-width:120px">
+    </td>
+    <td>{{ u.email }}</td>
+    <td>
+      <input form="edit-{{ u.id }}" name="whatsapp" value="{{ u.whatsapp or '' }}" style="min-width:110px">
+    </td>
+    <td>
+      <select form="edit-{{ u.id }}" name="role" style="min-width:120px">
+        <option value="user" {% if u.role=='user' %}selected{% endif %}>General user</option>
+        <option value="superadmin" {% if u.role=='superadmin' %}selected{% endif %}>Superadmin</option>
+      </select>
+    </td>
+    <td style="text-align:center">
+      <input form="edit-{{ u.id }}" type="checkbox" name="active" {% if u.active %}checked{% endif %} style="width:auto">
+    </td>
+    <td style="white-space:nowrap">
+      <form id="edit-{{ u.id }}" method="post" action="/master/users/{{ u.id }}/update" style="display:inline"></form>
+      <button form="edit-{{ u.id }}" class="btn sm">Save</button>
+      <form method="post" action="/master/users/{{ u.id }}/reset-password" style="display:inline">
+        <button class="btn ghost sm" onclick="return confirm('Reset {{ u.name }} to the default password?')">Reset pwd</button>
+      </form>
+      {% if u.id != me.id %}
+      <form method="post" action="/master/users/{{ u.id }}/delete" style="display:inline">
+        <button class="btn danger sm" onclick="return confirm('Delete {{ u.name }}? This cannot be undone.')">Delete</button>
+      </form>
+      {% endif %}
+    </td>
   </tr>
   {% endfor %}
   </tbody>
 </table>
 </div>
+<p class="help">Deleting is only possible for a user with no tasks on record &mdash; otherwise untick
+<strong>Active</strong> to disable the account while keeping their task history intact.</p>
 {% endblock %}

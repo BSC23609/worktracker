@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    LargeBinary,
     String,
     Text,
     func,
@@ -124,6 +125,28 @@ class TaskDeadline(Base):
     @property
     def is_original(self) -> bool:
         return self.seq == 1
+
+
+class TaskAttachment(Base):
+    """A document attached to a task. Stored in the DB (no disk on serverless)."""
+
+    __tablename__ = "task_attachments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id"), index=True)
+    filename: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(120), default="application/octet-stream")
+    size: Mapped[int] = mapped_column(Integer, default=0)
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    uploaded_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    task: Mapped["Task"] = relationship(foreign_keys=[task_id])
+    uploaded_by: Mapped[User] = relationship(foreign_keys=[uploaded_by_id])
+
+    @property
+    def size_kb(self) -> int:
+        return max(1, round(self.size / 1024))
 
 
 class NotificationLog(Base):

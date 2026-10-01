@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ task.title }} · {{ app_name }}{% endblock %}
+{% block title %}{{ task.title }} &middot; {{ app_name }}{% endblock %}
 {% block body %}
 <p><a href="/" class="muted">&larr; Back to board</a></p>
 
@@ -19,8 +19,34 @@
   </div>
   {% if task.status == 'completed' %}
     <p class="help" style="margin-top:.8rem">Completed on {{ task.completed_at.strftime('%d-%b-%Y %H:%M') }}
-    {% if task.completion_note %} — {{ task.completion_note }}{% endif %}</p>
+    {% if task.completion_note %} &mdash; {{ task.completion_note }}{% endif %}</p>
   {% endif %}
+</div>
+
+<div class="card">
+  <h2>Attachments</h2>
+  {% if attachments %}
+  <ul class="attach-list">
+    {% for a in attachments %}
+    <li>
+      <span class="fname">{{ a.filename }}</span>
+      <span class="fmeta">{{ a.size_kb }} KB &middot; {{ a.uploaded_by.name }}</span>
+      <span class="spacer"></span>
+      <a class="btn ghost sm" href="/tasks/{{ task.id }}/attachments/{{ a.id }}">Download</a>
+      <form method="post" action="/tasks/{{ task.id }}/attachments/{{ a.id }}/delete" style="display:inline">
+        <button class="btn ghost sm" onclick="return confirm('Remove {{ a.filename }}?')">Remove</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="help">No documents attached yet.</p>
+  {% endif %}
+  <form method="post" action="/tasks/{{ task.id }}/attachments" enctype="multipart/form-data" style="margin-top:.6rem">
+    <input class="file-input" type="file" name="attachments" multiple>
+    <button class="btn sm" style="margin-top:.6rem">Add attachment</button>
+    <span class="help">Up to 4 MB each.</span>
+  </form>
 </div>
 
 <div class="card">

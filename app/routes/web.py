@@ -3,10 +3,12 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+import io
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import config, notifications
@@ -20,9 +22,10 @@ from ..auth import (
     verify_password,
 )
 from ..db import get_db, today_ist
-from ..models import OPEN_STATUSES, ROLE_SUPERADMIN, ROLES, Task, User
+from ..models import OPEN_STATUSES, ROLE_SUPERADMIN, ROLES, Task, TaskAttachment, User
 from ..services import (
     TaskError,
+    add_attachment,
     all_open_tasks,
     complete_task,
     create_task,
@@ -120,16 +123,27 @@ def dashboard(request: Request, db: Session = Depends(get_db),
 
     overdue = [t for t in tasks if t.current_deadline < today]
     due_today = [t for t in tasks if t.current_deadline == today]
-    people = sorted({t.assignee for t in tasks}, key=lambda u: u.name) if user.is_superadmin else []
+
+    # Consolidated view for superadmins: group open tasks by assignee.
+    groups = []
     assignable = []
     if user.is_superadmin:
+        by_person: dict[int, dict] = {}
+        for t in tasks:
+            g = by_person.setdefault(t.assigned_to_id,
+                                     {"person": t.assignee, "tasks": [], "overdue": 0})
+            g["tasks"].append(t)
+            if t.current_deadline < today:
+                g["overdue"] += 1
+        groups = sorted(by_person.values(),
+                        key=lambda g: (-g["overdue"], -len(g["tasks"]), g["person"].name))
         assignable = list(db.scalars(select(User).where(User.active.is_(True)).order_by(User.name)))
 
     return templates.TemplateResponse(request, "dashboard.html", {
         "me": user, "tasks": tasks, "today": today,
-        "overdue": overdue, "due_today": due_today, "people": people,
-        "assignable": assignable, "ok": request.query_params.get("ok"),
-        "err": request.query_params.get("err"),
+        "overdue": overdue, "due_today": due_today, "groups": groups,
+        "people": groups, "assignable": assignable,
+        "ok": request.query_params.get("ok"), "err": request.query_params.get("err"),
     })
 
 
@@ -138,6 +152,7 @@ def dashboard(request: Request, db: Session = Depends(get_db),
 def create(request: Request, title: str = Form(...), deadline: str = Form(...),
            description: str = Form(""), priority: str = Form("medium"),
            assigned_to_id: Optional[int] = Form(None),
+           attachments: list[UploadFile] = File(default=[]),
            user: User = Depends(require_user), db: Session = Depends(get_db)):
     try:
         if user.is_superadmin and assigned_to_id:
@@ -149,11 +164,31 @@ def create(request: Request, title: str = Form(...), deadline: str = Form(...),
         task = create_task(db, created_by=user, assigned_to=assignee, title=title,
                            deadline=_parse_date(deadline), description=description,
                            priority=priority)
+        n_files = _save_uploads(db, task, user, attachments)
     except TaskError as e:
         return _flash("/", str(e), ok=False)
     notifications.notify_new_task(db, task)
     who = "yourself" if task.is_self_raised else task.assignee.name
-    return _flash("/", f"Task raised for {who}. Reminder sent.")
+    extra = f" {n_files} file(s) attached." if n_files else ""
+    return _flash("/", f"Task raised for {who}. Reminder sent.{extra}")
+
+
+def _save_uploads(db: Session, task: Task, user: User, uploads: list[UploadFile]) -> int:
+    """Read and store any non-empty uploaded files. Returns count saved."""
+    saved = 0
+    for f in uploads or []:
+        if not f or not f.filename:
+            continue
+        data = f.file.read()
+        if not data:
+            continue
+        add_attachment(db, task=task, actor=user, filename=f.filename,
+                       content_type=f.content_type or "application/octet-stream",
+                       data=data, commit=False)
+        saved += 1
+    if saved:
+        db.commit()
+    return saved
 
 
 @router.get("/tasks/{task_id}", response_class=HTMLResponse)
@@ -164,11 +199,71 @@ def task_detail(task_id: int, request: Request, db: Session = Depends(get_db),
         raise HTTPException(404, "Task not found")
     if not user.is_superadmin and task.assigned_to_id != user.id and task.created_by_id != user.id:
         raise HTTPException(403, "Not your task")
+    attachments = list(db.scalars(
+        select(TaskAttachment).where(TaskAttachment.task_id == task.id)
+        .order_by(TaskAttachment.created_at)))
     return templates.TemplateResponse(request, "task_detail.html", {
-        "me": user, "task": task, "today": today_ist(),
+        "me": user, "task": task, "today": today_ist(), "attachments": attachments,
         "can_act": user.is_superadmin or task.assigned_to_id == user.id,
         "ok": request.query_params.get("ok"), "err": request.query_params.get("err"),
     })
+
+
+def _task_or_404(db, task_id):
+    task = db.get(Task, task_id)
+    if not task:
+        raise HTTPException(404, "Task not found")
+    return task
+
+
+def _can_see_task(user, task) -> bool:
+    return user.is_superadmin or task.assigned_to_id == user.id or task.created_by_id == user.id
+
+
+@router.post("/tasks/{task_id}/attachments")
+def add_task_attachment(task_id: int, attachments: list[UploadFile] = File(default=[]),
+                        user: User = Depends(require_user), db: Session = Depends(get_db)):
+    task = _task_or_404(db, task_id)
+    if not _can_see_task(user, task):
+        raise HTTPException(403, "Not your task")
+    try:
+        n = _save_uploads(db, task, user, attachments)
+    except TaskError as e:
+        return _flash(f"/tasks/{task_id}", str(e), ok=False)
+    if not n:
+        return _flash(f"/tasks/{task_id}", "No file selected.", ok=False)
+    return _flash(f"/tasks/{task_id}", f"{n} file(s) attached.")
+
+
+@router.get("/tasks/{task_id}/attachments/{att_id}")
+def download_attachment(task_id: int, att_id: int, user: User = Depends(require_user),
+                        db: Session = Depends(get_db)):
+    task = _task_or_404(db, task_id)
+    if not _can_see_task(user, task):
+        raise HTTPException(403, "Not your task")
+    att = db.get(TaskAttachment, att_id)
+    if not att or att.task_id != task_id:
+        raise HTTPException(404, "Attachment not found")
+    from urllib.parse import quote
+    disp = f'attachment; filename*=UTF-8\'\'{quote(att.filename)}'
+    return StreamingResponse(io.BytesIO(att.data), media_type=att.content_type,
+                             headers={"Content-Disposition": disp})
+
+
+@router.post("/tasks/{task_id}/attachments/{att_id}/delete")
+def delete_attachment(task_id: int, att_id: int, user: User = Depends(require_user),
+                      db: Session = Depends(get_db)):
+    task = _task_or_404(db, task_id)
+    att = db.get(TaskAttachment, att_id)
+    if not att or att.task_id != task_id:
+        raise HTTPException(404, "Attachment not found")
+    # uploader, task creator, assignee, or any superadmin may remove
+    if not (user.is_superadmin or att.uploaded_by_id == user.id
+            or task.assigned_to_id == user.id or task.created_by_id == user.id):
+        raise HTTPException(403, "Not allowed")
+    db.delete(att)
+    db.commit()
+    return _flash(f"/tasks/{task_id}", "Attachment removed.")
 
 
 @router.post("/tasks/{task_id}/extend")
@@ -274,3 +369,29 @@ def reset_password(user_id: int, admin: User = Depends(require_superadmin),
     u.must_reset = True
     db.commit()
     return _flash("/master", f"{u.name}'s password reset to '{config.DEFAULT_PASSWORD}'.")
+
+
+@router.post("/master/users/{user_id}/delete")
+def delete_user(user_id: int, admin: User = Depends(require_superadmin),
+                db: Session = Depends(get_db)):
+    u = db.get(User, user_id)
+    if not u:
+        return _flash("/master", "User not found.", ok=False)
+    if u.id == admin.id:
+        return _flash("/master", "You can't delete your own account.", ok=False)
+    if u.role == ROLE_SUPERADMIN:
+        others = db.scalar(select(User).where(User.role == ROLE_SUPERADMIN,
+                                              User.active.is_(True), User.id != u.id))
+        if not others:
+            return _flash("/master", "At least one active superadmin must remain.", ok=False)
+    # A user tied to tasks can't be hard-deleted (it would orphan history).
+    linked = db.scalar(select(func.count()).select_from(Task)
+                       .where((Task.assigned_to_id == u.id) | (Task.created_by_id == u.id)))
+    if linked:
+        return _flash("/master",
+                      f"{u.name} has {linked} task(s) on record, so can't be deleted. "
+                      f"Untick 'Active' to disable the account instead.", ok=False)
+    name = u.name
+    db.delete(u)
+    db.commit()
+    return _flash("/master", f"{name} deleted.")

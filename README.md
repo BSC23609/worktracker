@@ -13,7 +13,12 @@ WhatsApp reminders via **WATI**, email via **SMTP**, morning digests via **GitHu
 - If someone can't finish in time they enter a **reason** and a **new deadline**. The old
   deadline is **never overwritten** — the full history of every deadline and reason is kept on
   the task's detail page.
-- A **Master** tab (superadmin only) manages users, roles and WhatsApp numbers.
+- Tasks can carry **attachments** (any related documents). Files are stored in the database;
+  each upload is capped at 4 MB (Vercel's request-body limit), up to 10 per task.
+- A **Master** tab (superadmin only) **adds, edits and deletes** users and manages roles and
+  WhatsApp numbers. A user tied to existing tasks can't be hard-deleted (it would orphan history) —
+  untick **Active** to disable them instead.
+- The superadmin board is a **consolidated** view: open tasks grouped per person, overdue flagged.
 
 ## The deadline-history design (the core requirement)
 
@@ -59,6 +64,13 @@ tests/                    29 tests (deadline history, auth, notifications, full 
 5. **GitHub Actions** (morning digests): add repo secrets `BASE_URL` (e.g. `https://worktracker.…`) and
    `CRON_SECRET` (same value as Vercel). The workflow fires at 02:30 UTC = **08:00 IST** daily and can
    also be run manually from the Actions tab.
+
+### Updating the schema later
+
+`scripts/neon_setup.sql` is idempotent (every statement is `IF NOT EXISTS` / `ON CONFLICT DO
+NOTHING`). When the data model gains a table or index, just re-run that whole file in the Neon SQL
+Editor — it adds what's missing and leaves existing tables, rows and the seeded superadmins
+untouched. (Re-running `scripts/init_db.py` does the same via `create_all`.)
 
 ## WATI templates to create (and get approved)
 

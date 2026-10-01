@@ -153,6 +153,40 @@ def reopen_task(db: Session, *, task: Task, actor: User, commit: bool = True) ->
 
 
 # ---- query helpers used by UI and digests ---------------------------------
+def add_attachment(
+    db: Session, *, task: Task, actor: User, filename: str, content_type: str,
+    data: bytes, commit: bool = True,
+) -> "TaskAttachment":
+    from . import config
+    from .models import TaskAttachment
+
+    if actor.id != task.assigned_to_id and actor.id != task.created_by_id and actor.role != ROLE_SUPERADMIN:
+        raise TaskError("You can't attach files to this task.")
+    if not data:
+        raise TaskError("The file is empty.")
+    if len(data) > config.MAX_UPLOAD_BYTES:
+        mb = config.MAX_UPLOAD_BYTES / (1024 * 1024)
+        raise TaskError(f"File is too large. Maximum size is {mb:.0f} MB.")
+    current = db.scalar(select(func.count()).select_from(TaskAttachment)
+                        .where(TaskAttachment.task_id == task.id)) or 0
+    if current >= config.MAX_ATTACHMENTS_PER_TASK:
+        raise TaskError(f"A task can have at most {config.MAX_ATTACHMENTS_PER_TASK} attachments.")
+
+    att = TaskAttachment(
+        task_id=task.id,
+        filename=(filename or "file")[:255],
+        content_type=(content_type or "application/octet-stream")[:120],
+        size=len(data),
+        data=data,
+        uploaded_by_id=actor.id,
+    )
+    db.add(att)
+    if commit:
+        db.commit()
+        db.refresh(att)
+    return att
+
+
 def open_tasks_for(db: Session, user_id: int) -> list[Task]:
     stmt = (
         select(Task)

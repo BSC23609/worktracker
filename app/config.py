@@ -25,6 +25,11 @@ DEFAULT_PASSWORD = os.getenv("DEFAULT_PASSWORD", "Bharat@123")
 APP_NAME = os.getenv("APP_NAME", "Work Tracker")
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8000").rstrip("/")
 
+# Attachments are stored in the DB. Vercel caps a request body at ~4.5 MB,
+# so keep per-file uploads under that.
+MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(4 * 1024 * 1024)))  # 4 MB
+MAX_ATTACHMENTS_PER_TASK = int(os.getenv("MAX_ATTACHMENTS_PER_TASK", "10"))
+
 # ---- Email (SMTP) ---------------------------------------------------------
 SMTP_HOST = os.getenv("SMTP_HOST", "")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
