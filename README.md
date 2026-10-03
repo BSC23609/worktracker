@@ -108,6 +108,7 @@ the `WATI_TEMPLATE_*` env vars (defaults shown). Numbers like `{{1}}` are WATI's
 | `WATI_TEMPLATE_EMP_DIGEST` | `wt_daily_tasks` | `{{1}}` name · `{{2}}` open count · `{{3}}` overdue count |
 | `WATI_TEMPLATE_ADMIN_DIGEST` | `wt_admin_summary` | `{{1}}` admin name · `{{2}}` open count · `{{3}}` overdue count |
 | `WATI_TEMPLATE_OTP` | `wt_otp` | `{{1}}` the 6-digit code |
+| `WATI_TEMPLATE_TASK_DONE` | `wt_task_done` | `{{1}}` task title · `{{2}}` completed by · `{{3}}` date · `{{4}}` on-time/late |
 | `WATI_TEMPLATE_WELCOME` | `wt_welcome3` | *(no variables — static body)* |
 
 For `wt_otp`, a simple body such as *"{{1}} is your Work Tracker verification code. It expires in 10

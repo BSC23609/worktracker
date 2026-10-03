@@ -240,6 +240,45 @@ def send_otp(db: Session, user: User, otp: str) -> bool:
     return bool(wa or em)
 
 
+def render_task_completed(task: Task) -> tuple[str, str, list[str]]:
+    when = task.completed_at.astimezone(config.IST) if task.completed_at else None
+    done_on = when.strftime(IST_FMT) if when else "-"
+    # on-time vs late, measured against the current (latest) deadline
+    late_days = (when.date() - task.current_deadline).days if when else 0
+    status = "on time" if late_days <= 0 else f"{late_days} day(s) late"
+    subject = f"[Completed] {task.title} — by {task.assignee.name}"
+    body = (
+        f"A task has been marked completed.\n\n"
+        f"Task      : {task.title}\n"
+        f"Completed : {task.assignee.name}\n"
+        f"On        : {done_on}\n"
+        f"Deadline  : {_d(task.current_deadline)} ({status})\n"
+        f"Raised by : {task.creator.name}\n"
+        + (f"Note      : {task.completion_note}\n" if task.completion_note else "")
+        + f"\nView it here: {config.BASE_URL}/tasks/{task.id}\n\n— {config.SMTP_FROM_NAME}"
+    )
+    params = [task.title, task.assignee.name, done_on, status]
+    return subject, body, params
+
+
+def notify_task_completed(db: Session, task: Task) -> None:
+    """Notify the configured recipient (default: Gourav) that a task finished."""
+    from sqlalchemy import func, select as _select
+    from .models import User as _User
+    recipient = db.scalar(_select(_User).where(
+        func.lower(_User.email) == config.COMPLETION_NOTIFY_EMAIL.strip().lower()))
+    to_email = recipient.email if recipient else config.COMPLETION_NOTIFY_EMAIL
+    to_wa = recipient.whatsapp if recipient else None
+    # Don't notify the recipient about their own completed tasks.
+    if recipient and task.assigned_to_id == recipient.id:
+        return
+    subject, body, params = render_task_completed(task)
+    send_email(db, to=to_email, subject=subject, body=body, kind="task_done", task_id=task.id)
+    send_whatsapp(db, to=to_wa, template=config.WATI_TEMPLATE_TASK_DONE, params=params,
+                  kind="task_done", task_id=task.id)
+    db.commit()
+
+
 def notify_new_task(db: Session, task: Task) -> None:
     subject, body, params = render_new_task(task)
     send_email(db, to=task.assignee.email, subject=subject, body=body,

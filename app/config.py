@@ -58,6 +58,10 @@ WATI_TEMPLATE_EMP_DIGEST = os.getenv("WATI_TEMPLATE_EMP_DIGEST", "wt_daily_tasks
 WATI_TEMPLATE_ADMIN_DIGEST = os.getenv("WATI_TEMPLATE_ADMIN_DIGEST", "wt_admin_summary")
 WATI_TEMPLATE_OTP = os.getenv("WATI_TEMPLATE_OTP", "wt_otp")
 WATI_TEMPLATE_WELCOME = os.getenv("WATI_TEMPLATE_WELCOME", "wt_welcome3")
+WATI_TEMPLATE_TASK_DONE = os.getenv("WATI_TEMPLATE_TASK_DONE", "wt_task_done")
+
+# Who gets notified when any task is completed (email + WhatsApp).
+COMPLETION_NOTIFY_EMAIL = os.getenv("COMPLETION_NOTIFY_EMAIL", "gourav@bharatsteels.in")
 WATI_BROADCAST_NAME = os.getenv("WATI_BROADCAST_NAME", "worktracker")
 WATI_DEFAULT_CC = os.getenv("WATI_DEFAULT_CC", "91")  # country code prepended to 10-digit numbers
 

@@ -513,6 +513,7 @@ def complete(task_id: int, note: str = Form(""), user: User = Depends(require_us
         complete_task(db, task=task, actor=user, note=note)
     except TaskError as e:
         return _flash(f"/tasks/{task_id}", str(e), ok=False)
+    notifications.notify_task_completed(db, task)
     return _flash(f"/tasks/{task_id}", "Marked as completed.")
 
 
