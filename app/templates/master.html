@@ -43,7 +43,7 @@ and must change it on first login.</p>
 
 <div class="card" style="padding:0">
 <table>
-  <thead><tr><th>Name</th><th>Emp code</th><th>Email</th><th>WhatsApp</th><th>Role</th><th>Active</th><th>Actions</th></tr></thead>
+  <thead><tr><th>Name</th><th>Emp code</th><th>Email</th><th>WhatsApp</th><th>Role</th><th>Active</th><th>Admin digest</th><th>Actions</th></tr></thead>
   <tbody>
   {% for u in users %}
   <tr>
@@ -59,6 +59,13 @@ and must change it on first login.</p>
     </td>
     <td style="text-align:center">
       <input form="edit-{{ u.id }}" type="checkbox" name="active" {% if u.active %}checked{% endif %} style="width:auto">
+    </td>
+    <td style="text-align:center">
+      {% if u.role == 'superadmin' %}
+      <input form="edit-{{ u.id }}" type="checkbox" name="wants_admin_digest" {% if u.wants_admin_digest %}checked{% endif %} style="width:auto" title="Receive the daily consolidated digest">
+      {% else %}
+      <span class="help">—</span>
+      {% endif %}
     </td>
     <td style="white-space:nowrap">
       <form id="edit-{{ u.id }}" method="post" action="/master/users/{{ u.id }}/update" style="display:inline"></form>
@@ -88,6 +95,7 @@ and must change it on first login.</p>
 </table>
 </div>
 <p class="help">Email is optional &mdash; a user with only an employee code logs in with that code.
-Deleting is only possible for a user with no tasks on record; otherwise untick
-<strong>Active</strong> to disable the account while keeping their task history.</p>
+<strong>Admin digest</strong> (superadmins only) controls whether they get the daily consolidated
+list; their own task digest is unaffected. Deleting is only possible for a user with no tasks on record;
+otherwise untick <strong>Active</strong> to disable the account while keeping their task history.</p>
 {% endblock %}

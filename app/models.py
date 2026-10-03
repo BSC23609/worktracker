@@ -52,6 +52,8 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     must_reset: Mapped[bool] = mapped_column(Boolean, default=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Superadmins only: whether to receive the daily consolidated (admin) digest.
+    wants_admin_digest: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     @property

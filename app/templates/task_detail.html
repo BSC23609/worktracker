@@ -23,6 +23,38 @@
   {% endif %}
 </div>
 
+{% if can_edit %}
+<details class="card">
+  <summary>Edit or delete this task</summary>
+  <p class="help" style="margin-top:.6rem">Only the person who assigned this task can change it.</p>
+  <form method="post" action="/tasks/{{ task.id }}/edit" style="margin-top:.4rem">
+    <label>Title</label>
+    <input name="title" required maxlength="300" value="{{ task.title }}">
+    <label>Details</label>
+    <textarea name="description">{{ task.description or '' }}</textarea>
+    <div class="row">
+      <div>
+        <label>Priority</label>
+        <select name="priority">
+          <option value="medium" {% if task.priority=='medium' %}selected{% endif %}>Medium</option>
+          <option value="high" {% if task.priority=='high' %}selected{% endif %}>High</option>
+          <option value="low" {% if task.priority=='low' %}selected{% endif %}>Low</option>
+        </select>
+      </div>
+      <div>
+        <label>Deadline (correct it)</label>
+        <input type="date" name="deadline" value="{{ task.current_deadline }}">
+      </div>
+    </div>
+    <p class="help">Correcting the deadline here is not logged as a revision &mdash; use "Revise deadline" below for a dated change with a reason.</p>
+    <button class="btn">Save changes</button>
+  </form>
+  <form method="post" action="/tasks/{{ task.id }}/delete" style="margin-top:.8rem;border-top:1px solid var(--g100);padding-top:.8rem">
+    <button class="btn danger" onclick="return confirm('Delete this task permanently? This cannot be undone.')">Delete task</button>
+  </form>
+</details>
+{% endif %}
+
 <div class="card">
   <h2>Attachments</h2>
   {% if attachments %}

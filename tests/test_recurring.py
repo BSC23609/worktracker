@@ -111,7 +111,7 @@ def test_create_recurring_via_http(client, db):
     ravi = _u(db, "ravi@bharatsteels.in")
     today = today_ist().isoformat()
     r = client.post("/tasks/create", data={
-        "title": "Daily production report", "assigned_to_id": str(ravi.id), "priority": "medium",
+        "title": "Daily production report", "assigned_to_ids": [str(ravi.id)], "priority": "medium",
         "repetitive": "on", "frequency": "daily", "start_date": today, "end_date": "",
         "deadline_offset": "0"}, follow_redirects=False)
     assert r.status_code == 303

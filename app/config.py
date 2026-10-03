@@ -19,9 +19,11 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./worktracker.db")
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-insecure-change-me")
 SESSION_COOKIE = "wt_session"
 SESSION_MAX_AGE = int(os.getenv("SESSION_MAX_AGE", str(60 * 60 * 24 * 180)))  # 180 days
-# Cookies are marked Secure by default (the live site is HTTPS). For local http
-# development set COOKIE_SECURE=false so the browser will store them.
-COOKIE_SECURE = os.getenv("COOKIE_SECURE", "true").lower() == "true"
+# Session cookie lifetime is 180 days (stays logged in until logout). The Secure
+# flag is OFF by default — forcing it caused instant logouts when any hop wasn't
+# seen as HTTPS. Non-secure cookies still work fine over HTTPS. Set COOKIE_SECURE=true
+# only if you're certain every request is HTTPS end to end.
+COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
 DEFAULT_PASSWORD = os.getenv("DEFAULT_PASSWORD", "Bharat@123")
 # Forgot-password OTP settings.
 OTP_TTL = int(os.getenv("OTP_TTL", "600"))            # 10 minutes to enter the code

@@ -5,8 +5,12 @@ WhatsApp reminders via **WATI**, email via **SMTP**, morning digests via **GitHu
 
 ## What it does
 
-- **Superadmins** (Gourav, Jeeva) allocate tasks to anyone — including each other — with a deadline.
+- **Superadmins** (Gourav, Jeeva) allocate tasks to anyone — including each other — with a deadline,
+  and can **assign one task to several people at once** (each gets their own copy to complete).
   **General users** can raise tasks for themselves.
+- **Edit / delete** a task is available to **the person who assigned it** (the creator) — including
+  self-raised tasks — from the task's page. Editing covers title, details, priority and a deadline
+  correction; the assignee's dated "revise deadline" flow is separate. Deleting is permanent.
 - **Recurring tasks.** Tick **Repetitive task** when raising one and set a frequency (daily, weekly on a
   chosen weekday, monthly on a chosen day, quarterly, half-yearly, yearly), a start date, an optional end
   date (blank = until stopped), and a deadline as days-from-start. It's stored as a *schedule*; the

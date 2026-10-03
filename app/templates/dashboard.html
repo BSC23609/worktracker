@@ -46,17 +46,18 @@
     <input name="title" required maxlength="300" placeholder="e.g. Submit GST reconciliation for September">
     <label>Details (optional)</label>
     <textarea name="description" placeholder="Any context or scope"></textarea>
+    {% if me.is_superadmin %}
+    <label>Assign to <span class="help" style="display:inline">(tick one or more)</span></label>
+    <div style="max-height:160px;overflow:auto;border:1px solid var(--g200);border-radius:6px;padding:.5rem .7rem;background:#fff">
+      {% for u in assignable %}
+      <label style="display:flex;align-items:center;gap:.5rem;font-weight:400;margin:.15rem 0">
+        <input type="checkbox" name="assigned_to_ids" value="{{ u.id }}" {% if u.id==me.id %}checked{% endif %} style="width:auto">
+        <span>{{ u.name }}{% if u.id==me.id %} (me){% endif %}{% if u.is_superadmin %} &middot; superadmin{% endif %}</span>
+      </label>
+      {% endfor %}
+    </div>
+    {% endif %}
     <div class="stacked">
-      {% if me.is_superadmin %}
-      <div>
-        <label>Assign to</label>
-        <select name="assigned_to_id" required>
-          {% for u in assignable %}
-          <option value="{{ u.id }}" {% if u.id==me.id %}selected{% endif %}>{{ u.name }}{% if u.id==me.id %} (me){% endif %}{% if u.is_superadmin %} &middot; superadmin{% endif %}</option>
-          {% endfor %}
-        </select>
-      </div>
-      {% endif %}
       <div>
         <label>Priority</label>
         <select name="priority">

@@ -124,6 +124,51 @@ def extend_deadline(
     return task
 
 
+def _can_manage(task: Task, actor: User) -> bool:
+    """Edit/delete is for the person who assigned the task (its creator), or a superadmin."""
+    return actor.id == task.created_by_id or actor.role == ROLE_SUPERADMIN
+
+
+def edit_task(
+    db: Session, *, task: Task, actor: User, title: str, description: str = "",
+    priority: str = "medium", new_deadline: Optional[date] = None, commit: bool = True,
+) -> Task:
+    if not _can_manage(task, actor):
+        raise TaskError("Only the person who assigned this task can edit it.")
+    title = (title or "").strip()
+    if not title:
+        raise TaskError("Title is required.")
+    task.title = title
+    task.description = (description or "").strip() or None
+    if priority in ("low", "medium", "high"):
+        task.priority = priority
+    # A deadline edit is a correction, not a logged revision: update the current
+    # deadline and the latest history row in place (keep its seq/reason).
+    if new_deadline and new_deadline != task.current_deadline:
+        rows = sorted(task.deadlines, key=lambda d: d.seq)
+        if rows:
+            rows[-1].deadline = new_deadline
+        task.current_deadline = new_deadline
+        if len(rows) <= 1:
+            task.original_deadline = new_deadline  # still the original, keep them aligned
+    if commit:
+        db.commit()
+        db.refresh(task)
+    return task
+
+
+def delete_task(db: Session, *, task: Task, actor: User, commit: bool = True) -> None:
+    if not _can_manage(task, actor):
+        raise TaskError("Only the person who assigned this task can delete it.")
+    from .models import NotificationLog, TaskAttachment
+    db.query(TaskAttachment).filter(TaskAttachment.task_id == task.id).delete()
+    db.query(NotificationLog).filter(NotificationLog.task_id == task.id)\
+        .update({"task_id": None}, synchronize_session=False)
+    db.delete(task)  # deadlines cascade via the relationship
+    if commit:
+        db.commit()
+
+
 def complete_task(
     db: Session, *, task: Task, actor: User, note: str = "", commit: bool = True
 ) -> Task:

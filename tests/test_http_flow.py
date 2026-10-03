@@ -35,7 +35,7 @@ def test_superadmin_assigns_and_employee_sees_it(client, db):
     ravi = db.query(User).filter_by(email="ravi@bharatsteels.in").one()
     r = client.post("/tasks/create", data={
         "title": "Reconcile NMDC ledger", "description": "Sept", "priority": "high",
-        "assigned_to_id": str(ravi.id), "deadline": _future(5),
+        "assigned_to_ids": [str(ravi.id)], "deadline": _future(5),
     }, follow_redirects=False)
     assert r.status_code == 303
     task = db.query(Task).filter_by(title="Reconcile NMDC ledger").one()
@@ -61,7 +61,7 @@ def test_extend_via_http_keeps_history(client, db):
     g = login_as(client, db, "gourav@bharatsteels.in")
     ravi = db.query(User).filter_by(email="ravi@bharatsteels.in").one()
     client.post("/tasks/create", data={
-        "title": "HTTP extend", "assigned_to_id": str(ravi.id), "deadline": _future(3),
+        "title": "HTTP extend", "assigned_to_ids": [str(ravi.id)], "deadline": _future(3),
     })
     task = db.query(Task).filter_by(title="HTTP extend").one()
 
@@ -85,7 +85,7 @@ def test_employee_cannot_open_others_task(client, db):
     g = login_as(client, db, "gourav@bharatsteels.in")
     ravi = db.query(User).filter_by(email="ravi@bharatsteels.in").one()
     client.post("/tasks/create", data={
-        "title": "Ravi only", "assigned_to_id": str(ravi.id), "deadline": _future(3)})
+        "title": "Ravi only", "assigned_to_ids": [str(ravi.id)], "deadline": _future(3)})
     task = db.query(Task).filter_by(title="Ravi only").one()
     login_as(client, db, "priya@bharatsteels.in")
     r = client.get(f"/tasks/{task.id}")

@@ -58,9 +58,12 @@ def run_daily_digests(db: Session, *, on: date | None = None, force: bool = Fals
                                              dedupe_key=key)
         summary["employee_sent" if (sent_e or sent_w) else "employee_skipped"] += 1
 
-    # 2) consolidated list to every superadmin
+    # 2) consolidated list to every superadmin who wants it
     open_all = all_open_tasks(db)
     for admin in [u for u in users if u.role == ROLE_SUPERADMIN]:
+        if not admin.wants_admin_digest:
+            summary["admin_skipped"] += 1
+            continue
         key = f"adm:{admin.id}:{day}"
         if not force and _already_sent(db, key):
             summary["admin_skipped"] += 1

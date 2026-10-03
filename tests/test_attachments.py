@@ -53,7 +53,7 @@ def test_create_with_attachment_and_download(client, db):
     login_as(client, db, "gourav@bharatsteels.in")
     ravi = _u(db, "ravi@bharatsteels.in")
     r = client.post("/tasks/create",
-                    data={"title": "Has doc", "assigned_to_id": str(ravi.id),
+                    data={"title": "Has doc", "assigned_to_ids": [str(ravi.id)],
                           "deadline": _future(4), "priority": "medium"},
                     files=[("attachments", ("plan.txt", b"attached-content", "text/plain"))],
                     follow_redirects=False)

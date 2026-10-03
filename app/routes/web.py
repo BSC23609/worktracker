@@ -38,6 +38,8 @@ from ..services import (
     complete_task,
     create_schedule,
     create_task,
+    delete_task,
+    edit_task,
     extend_deadline,
     generate_due_recurring_tasks,
     open_tasks_for,
@@ -262,7 +264,7 @@ def dashboard(request: Request, db: Session = Depends(get_db),
 @router.post("/tasks/create")
 def create(request: Request, title: str = Form(...), deadline: str = Form(""),
            description: str = Form(""), priority: str = Form("medium"),
-           assigned_to_id: Optional[int] = Form(None),
+           assigned_to_ids: list[str] = Form(default=[]),
            attachments: list[UploadFile] = File(default=[]),
            repetitive: Optional[str] = Form(None),
            frequency: str = Form("daily"), start_date: str = Form(""), end_date: str = Form(""),
@@ -273,37 +275,82 @@ def create(request: Request, title: str = Form(...), deadline: str = Form(""),
         s = (s or "").strip()
         return int(s) if s.isdigit() else None
     try:
-        if user.is_superadmin and assigned_to_id:
-            assignee = db.get(User, int(assigned_to_id))
-            if not assignee:
-                raise TaskError("Selected user not found.")
+        # Work out the assignees. Superadmins can pick one or many; everyone else -> self.
+        if user.is_superadmin and assigned_to_ids:
+            ids, seen = [], set()
+            for raw in assigned_to_ids:
+                i = _int_or_none(raw)
+                if i and i not in seen:
+                    seen.add(i); ids.append(i)
+            assignees = [db.get(User, i) for i in ids]
+            assignees = [a for a in assignees if a]
+            if not assignees:
+                raise TaskError("Select at least one person to assign to.")
         else:
-            assignee = user
-        if not assignee.active:
-            raise TaskError("Cannot assign to an inactive user.")
+            assignees = [user]
+        for a in assignees:
+            if not a.active:
+                raise TaskError(f"{a.name} is inactive and can't be assigned.")
 
         if repetitive == "on":
-            sch = create_schedule(
-                db, created_by=user, assigned_to=assignee, title=title, frequency=frequency,
-                start_date=_parse_date(start_date), end_date=_parse_date(end_date) if end_date else None,
-                day_of_week=_int_or_none(day_of_week), day_of_month=_int_or_none(day_of_month),
-                deadline_offset_days=_int_or_none(deadline_offset) or 0,
-                description=description, priority=priority)
-            n = generate_due_recurring_tasks(db)  # create any instances already due
-            who = "yourself" if sch.assigned_to_id == user.id else assignee.name
-            extra = f" {n} due instance(s) added now." if n else ""
-            return _flash("/", f"Recurring task set up for {who} ({sch.frequency_label}).{extra}")
+            sd = _parse_date(start_date)
+            ed = _parse_date(end_date) if end_date else None
+            dow, dom, off = _int_or_none(day_of_week), _int_or_none(day_of_month), (_int_or_none(deadline_offset) or 0)
+            label = None
+            for a in assignees:
+                sch = create_schedule(db, created_by=user, assigned_to=a, title=title,
+                                      frequency=frequency, start_date=sd, end_date=ed,
+                                      day_of_week=dow, day_of_month=dom, deadline_offset_days=off,
+                                      description=description, priority=priority)
+                label = sch.frequency_label
+            generate_due_recurring_tasks(db)
+            who = "yourself" if assignees == [user] else f"{len(assignees)} people"
+            return _flash("/", f"Recurring task set up for {who} ({label}).")
 
-        # one-off task
-        task = create_task(db, created_by=user, assigned_to=assignee, title=title,
-                           deadline=_parse_date(deadline), description=description, priority=priority)
-        n_files = _save_uploads(db, task, user, attachments)
+        # one-off: a separate task per assignee, each notified
+        d = _parse_date(deadline)
+        made = []
+        for a in assignees:
+            t = create_task(db, created_by=user, assigned_to=a, title=title,
+                            deadline=d, description=description, priority=priority)
+            _save_uploads(db, t, user, attachments)
+            made.append(t)
     except TaskError as e:
         return _flash("/", str(e), ok=False)
-    notifications.notify_new_task(db, task)
-    who = "yourself" if task.is_self_raised else task.assignee.name
-    extra = f" {n_files} file(s) attached." if n_files else ""
-    return _flash("/", f"Task raised for {who}. Reminder sent.{extra}")
+    for t in made:
+        notifications.notify_new_task(db, t)
+    if len(made) == 1:
+        who = "yourself" if made[0].is_self_raised else made[0].assignee.name
+        return _flash("/", f"Task raised for {who}. Reminder sent.")
+    return _flash("/", f"Task raised for {len(made)} people. Reminders sent.")
+
+
+@router.post("/tasks/{task_id}/edit")
+def edit_task_route(task_id: int, title: str = Form(...), description: str = Form(""),
+                    priority: str = Form("medium"), deadline: str = Form(""),
+                    user: User = Depends(require_user), db: Session = Depends(get_db)):
+    task = db.get(Task, task_id)
+    if not task:
+        raise HTTPException(404, "Task not found")
+    try:
+        edit_task(db, task=task, actor=user, title=title, description=description,
+                  priority=priority, new_deadline=_parse_date(deadline) if deadline else None)
+    except TaskError as e:
+        return _flash(f"/tasks/{task_id}", str(e), ok=False)
+    return _flash(f"/tasks/{task_id}", "Task updated.")
+
+
+@router.post("/tasks/{task_id}/delete")
+def delete_task_route(task_id: int, user: User = Depends(require_user),
+                      db: Session = Depends(get_db)):
+    task = db.get(Task, task_id)
+    if not task:
+        raise HTTPException(404, "Task not found")
+    try:
+        delete_task(db, task=task, actor=user)
+    except TaskError as e:
+        return _flash(f"/tasks/{task_id}", str(e), ok=False)
+    return _flash("/", "Task deleted.")
 
 
 @router.post("/schedules/{schedule_id}/stop")
@@ -351,6 +398,7 @@ def task_detail(task_id: int, request: Request, db: Session = Depends(get_db),
     return templates.TemplateResponse(request, "task_detail.html", {
         "me": user, "task": task, "today": today_ist(), "attachments": attachments,
         "can_act": user.is_superadmin or task.assigned_to_id == user.id,
+        "can_edit": user.is_superadmin or task.created_by_id == user.id,
         "ok": request.query_params.get("ok"), "err": request.query_params.get("err"),
     })
 
@@ -565,10 +613,12 @@ def create_user(name: str = Form(...), email: str = Form(""), emp_code: str = Fo
 @router.post("/master/users/{user_id}/update")
 def update_user(user_id: int, name: str = Form(...), emp_code: str = Form(""),
                 whatsapp: str = Form(""), role: str = Form("user"), active: str = Form("off"),
+                wants_admin_digest: str = Form("off"),
                 admin: User = Depends(require_superadmin), db: Session = Depends(get_db)):
     u = db.get(User, user_id)
     if not u:
         return _flash("/master", "User not found.", ok=False)
+    super_context = (u.role == ROLE_SUPERADMIN) or (role == ROLE_SUPERADMIN)
     # Don't let the last active superadmin lose the role / be deactivated.
     is_demote = (u.role == ROLE_SUPERADMIN and role != ROLE_SUPERADMIN)
     is_deactivate = (u.active and active != "on")
@@ -589,6 +639,8 @@ def update_user(user_id: int, name: str = Form(...), emp_code: str = Form(""),
     u.whatsapp = notifications.normalise_whatsapp(whatsapp)
     u.role = role if role in ROLES else u.role
     u.active = (active == "on")
+    if super_context:
+        u.wants_admin_digest = (wants_admin_digest == "on")
     db.commit()
     return _flash("/master", f"{u.name} updated.")
 
