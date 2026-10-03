@@ -41,12 +41,20 @@
           <option value="low" {% if task.priority=='low' %}selected{% endif %}>Low</option>
         </select>
       </div>
+      {% if not task.is_self_raised %}
       <div>
         <label>Deadline (correct it)</label>
         <input type="date" name="deadline" value="{{ task.current_deadline }}">
       </div>
+      {% else %}
+      <div>
+        <label>Deadline</label>
+        <input type="date" value="{{ task.current_deadline }}" disabled>
+        <p class="help">Locked for self-raised tasks. Use "Revise deadline" below (with a reason) to change it.</p>
+      </div>
+      {% endif %}
     </div>
-    <p class="help">Correcting the deadline here is not logged as a revision &mdash; use "Revise deadline" below for a dated change with a reason.</p>
+    {% if not task.is_self_raised %}<p class="help">Correcting the deadline here is not logged as a revision &mdash; use "Revise deadline" below for a dated change with a reason.</p>{% endif %}
     <button class="btn">Save changes</button>
   </form>
   <form method="post" action="/tasks/{{ task.id }}/delete" style="margin-top:.8rem;border-top:1px solid var(--g100);padding-top:.8rem">

@@ -95,6 +95,18 @@ def test_self_raised_editable_by_that_person(db):
     assert t.title == "Mine edited"
 
 
+def test_self_raised_deadline_is_not_editable(db):
+    r = _u(db, "ravi@bharatsteels.in")
+    original = today_ist() + timedelta(days=2)
+    t = create_task(db, created_by=r, assigned_to=r, title="Mine", deadline=original)
+    # try to push the deadline via edit — title changes, deadline stays put
+    edit_task(db, task=t, actor=r, title="Mine edited",
+              new_deadline=today_ist() + timedelta(days=30))
+    assert t.title == "Mine edited"
+    assert t.current_deadline == original      # unchanged
+    assert t.original_deadline == original
+
+
 # ---- delete ---------------------------------------------------------------
 def test_creator_can_delete_and_cleans_up(db):
     g, r = _u(db, "gourav@bharatsteels.in"), _u(db, "ravi@bharatsteels.in")

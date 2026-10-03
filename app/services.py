@@ -144,7 +144,9 @@ def edit_task(
         task.priority = priority
     # A deadline edit is a correction, not a logged revision: update the current
     # deadline and the latest history row in place (keep its seq/reason).
-    if new_deadline and new_deadline != task.current_deadline:
+    # Self-raised tasks can't have their deadline edited here — that would let
+    # people silently move their own deadline; they must use the logged "revise" flow.
+    if new_deadline and not task.is_self_raised and new_deadline != task.current_deadline:
         rows = sorted(task.deadlines, key=lambda d: d.seq)
         if rows:
             rows[-1].deadline = new_deadline
