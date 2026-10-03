@@ -3,7 +3,13 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sign in &middot; {{ app_name }}</title>
 <link rel="stylesheet" href="/static/style.css?v=6">
-<link rel="icon" href="/static/logos/group.png">
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <meta name="theme-color" content="#0d1421">
+  <link rel="icon" href="/static/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" href="/static/favicon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Work Tracker">
 </head><body>
 <main class="wrap" style="max-width:400px;margin-top:7vh">
   <div style="text-align:center;margin-bottom:1.2rem">
@@ -22,4 +28,5 @@
   <p style="text-align:center;margin-top:1rem"><a href="/forgot">Forgot password?</a></p>
   {% include "_companies.html" %}
 </main>
+<script>if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('/sw.js').catch(function(){});});}</script>
 </body></html>

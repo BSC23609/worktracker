@@ -29,5 +29,18 @@ if os.getenv("INIT_DB", "").lower() == "true":
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
+
+@app.get("/sw.js", include_in_schema=False)
+def service_worker():
+    # Served from the root so the PWA controls the whole site (scope "/").
+    from fastapi.responses import FileResponse
+    return FileResponse(os.path.join(static_dir, "sw.js"), media_type="application/javascript")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    from fastapi.responses import FileResponse
+    return FileResponse(os.path.join(static_dir, "favicon.ico"), media_type="image/x-icon")
+
 app.include_router(cron.router)
 app.include_router(web.router)

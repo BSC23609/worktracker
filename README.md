@@ -11,6 +11,10 @@ WhatsApp reminders via **WATI**, email via **SMTP**, morning digests via **GitHu
 - **Edit / delete** a task is available to **the person who assigned it** (the creator) — including
   self-raised tasks — from the task's page. Editing covers title, details, priority and a deadline
   correction; the assignee's dated "revise deadline" flow is separate. Deleting is permanent.
+- **Installable app (PWA).** The site ships a web-app manifest, a service worker (`/sw.js`), and a
+  branded **Work Tracker** icon in the BSG palette, so staff can "Add to Home Screen" / "Install" it and
+  open it like a native app. The service worker only caches `/static/` assets (never user pages/data);
+  bump `VERSION` in `app/static/sw.js` to force clients to refresh.
 - **Recurring tasks.** Tick **Repetitive task** when raising one and set a frequency (daily, weekly on a
   chosen weekday, monthly on a chosen day, quarterly, half-yearly, yearly), a start date, an optional end
   date (blank = until stopped), and a deadline as days-from-start. It's stored as a *schedule*; the

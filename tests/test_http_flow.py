@@ -30,6 +30,14 @@ def test_health_ok(client):
     assert r.status_code == 200 and r.json()["status"] == "ok"
 
 
+def test_pwa_assets_served(client):
+    sw = client.get("/sw.js")
+    assert sw.status_code == 200 and "javascript" in sw.headers["content-type"]
+    assert client.get("/favicon.ico").status_code == 200
+    man = client.get("/static/manifest.webmanifest")
+    assert man.status_code == 200 and client.get("/static/icons/icon-192.png").status_code == 200
+
+
 def test_superadmin_assigns_and_employee_sees_it(client, db):
     login_as(client, db, "gourav@bharatsteels.in")
     ravi = db.query(User).filter_by(email="ravi@bharatsteels.in").one()
