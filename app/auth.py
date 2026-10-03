@@ -94,10 +94,13 @@ def make_session_token(user_id: int) -> str:
 
 
 def read_session_token(token: str) -> Optional[int]:
+    # No max_age here on purpose: the signature must not time-expire (that caused
+    # periodic logouts from clock skew). The cookie's own Max-Age (180 days) is
+    # what ends the session; logging out clears it.
     try:
-        data = _serializer.loads(token, max_age=config.SESSION_MAX_AGE)
+        data = _serializer.loads(token)
         return int(data["uid"])
-    except (BadSignature, KeyError, ValueError, TypeError):
+    except (BadSignature, SignatureExpired, KeyError, ValueError, TypeError):
         return None
 
 

@@ -89,6 +89,21 @@ def login(request: Request, identifier: str = Form(...), password: str = Form(..
     return resp
 
 
+@router.get("/whoami")
+def whoami(request: Request, user: Optional[User] = Depends(current_user)):
+    """Diagnostic (no redirect): shows whether the current session is valid and why."""
+    token = request.cookies.get(config.SESSION_COOKIE)
+    return {
+        "logged_in": user is not None,
+        "uid": user.id if user else None,
+        "email": user.email if user else None,
+        "cookie_present": bool(token),
+        "cookie_secure": config.COOKIE_SECURE,
+        "secret_key_is_default": config.SECRET_KEY == "dev-insecure-change-me",
+        "session_max_age_days": round(config.SESSION_MAX_AGE / 86400, 1),
+    }
+
+
 @router.get("/logout")
 def logout():
     resp = RedirectResponse("/login", status_code=303)
