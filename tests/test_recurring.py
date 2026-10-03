@@ -36,16 +36,40 @@ def test_daily_occurrences(db):
 
 def test_weekly_lands_on_chosen_day(db):
     s = _sched(db, frequency="weekly", start_date=date(2026, 1, 1),
-               end_date=date(2026, 1, 31), day_of_week=2)  # Wednesday
+               end_date=date(2026, 1, 31), days_of_week=[2])  # Wednesday
     occ = list(schedule_occurrences(s, until=date(2026, 1, 31)))
     assert occ and all(d.weekday() == 2 for d in occ)
 
 
 def test_monthly_clamps_short_months(db):
     s = _sched(db, frequency="monthly", start_date=date(2026, 1, 15),
-               end_date=date(2026, 4, 30), day_of_month=31)
+               end_date=date(2026, 4, 30), days_of_month=[31])
     occ = list(schedule_occurrences(s, until=date(2026, 4, 30)))
     assert occ == [date(2026, 1, 31), date(2026, 2, 28), date(2026, 3, 31), date(2026, 4, 30)]
+
+
+def test_weekly_multiple_days(db):
+    # Mondays (0) and Thursdays (3)
+    s = _sched(db, frequency="weekly", start_date=date(2026, 1, 1),
+               end_date=date(2026, 1, 31), days_of_week=[0, 3])
+    occ = list(schedule_occurrences(s, until=date(2026, 1, 31)))
+    assert occ and all(d.weekday() in (0, 3) for d in occ)
+    assert sum(1 for d in occ if d.weekday() == 0) >= 4   # ~4 Mondays
+    assert sum(1 for d in occ if d.weekday() == 3) >= 4   # ~4 Thursdays
+    assert occ == sorted(occ)                              # chronological
+
+
+def test_monthly_multiple_days(db):
+    s = _sched(db, frequency="monthly", start_date=date(2026, 1, 1),
+               end_date=date(2026, 3, 31), days_of_month=[1, 15])
+    occ = list(schedule_occurrences(s, until=date(2026, 3, 31)))
+    assert occ == [date(2026, 1, 1), date(2026, 1, 15), date(2026, 2, 1),
+                   date(2026, 2, 15), date(2026, 3, 1), date(2026, 3, 15)]
+
+
+def test_weekly_requires_at_least_one_day(db):
+    with pytest.raises(TaskError, match="at least one day of the week"):
+        _sched(db, frequency="weekly", start_date=date(2026, 1, 1), days_of_week=[])
 
 
 def test_quarterly_steps_three_months(db):

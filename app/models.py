@@ -182,8 +182,11 @@ class TaskSchedule(Base):
     frequency: Mapped[str] = mapped_column(String(20))         # daily|weekly|monthly|quarterly|half_yearly|yearly
     start_date: Mapped[date] = mapped_column(Date)
     end_date: Mapped[Optional[date]] = mapped_column(Date, default=None)  # None = until stopped
-    day_of_week: Mapped[Optional[int]] = mapped_column(Integer, default=None)   # 0=Mon..6=Sun (weekly)
-    day_of_month: Mapped[Optional[int]] = mapped_column(Integer, default=None)  # 1..31 (monthly)
+    day_of_week: Mapped[Optional[int]] = mapped_column(Integer, default=None)   # legacy single (0=Mon..6=Sun)
+    day_of_month: Mapped[Optional[int]] = mapped_column(Integer, default=None)  # legacy single (1..31)
+    # Multiple days: CSV, e.g. "0,3" (Mon & Thu) or "1,15" (1st & 15th).
+    days_of_week: Mapped[Optional[str]] = mapped_column(String(40), default=None)
+    days_of_month: Mapped[Optional[str]] = mapped_column(String(120), default=None)
     deadline_offset_days: Mapped[int] = mapped_column(Integer, default=0)
 
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
@@ -194,11 +197,29 @@ class TaskSchedule(Base):
     creator: Mapped[User] = relationship(foreign_keys=[created_by_id])
 
     @property
+    def weekday_list(self) -> list[int]:
+        if self.days_of_week:
+            return [int(x) for x in self.days_of_week.split(",") if x.strip().isdigit()]
+        return [self.day_of_week] if self.day_of_week is not None else []
+
+    @property
+    def monthday_list(self) -> list[int]:
+        if self.days_of_month:
+            return [int(x) for x in self.days_of_month.split(",") if x.strip().isdigit()]
+        return [self.day_of_month] if self.day_of_month else []
+
+    @property
     def frequency_label(self) -> str:
-        if self.frequency == "weekly" and self.day_of_week is not None:
-            return f"Weekly ({WEEKDAYS[self.day_of_week]})"
-        if self.frequency == "monthly" and self.day_of_month:
-            return f"Monthly (day {self.day_of_month})"
+        if self.frequency == "weekly":
+            wds = self.weekday_list
+            if wds:
+                return "Weekly (" + ", ".join(WEEKDAYS[d][:3] for d in sorted(wds)) + ")"
+            return "Weekly"
+        if self.frequency == "monthly":
+            mds = self.monthday_list
+            if mds:
+                return "Monthly (day " + ", ".join(str(d) for d in sorted(mds)) + ")"
+            return "Monthly"
         return {
             "daily": "Every day", "quarterly": "Quarterly",
             "half_yearly": "Half-yearly", "yearly": "Yearly",

@@ -19,7 +19,7 @@ WhatsApp reminders via **WATI**, email via **SMTP**, morning digests via **GitHu
   chosen weekday, monthly on a chosen day, quarterly, half-yearly, yearly), a start date, an optional end
   date (blank = until stopped), and a deadline as days-from-start. It's stored as a *schedule*; the
   morning job materialises each occurrence as a normal task on the assignee's board as it falls due, and
-  they mark each done. The board lists active schedules with a **Stop** button (already-created tasks stay).
+  they mark each done. Completed tasks appear in a collapsible section on the board (superadmins see all; users see their own). The board lists active schedules with a **Stop** button (already-created tasks stay).
 - On raising a task, the assignee gets an **email + WhatsApp** reminder with the task and deadline.
 - **Every morning (10:00 IST)** each person gets their pending-task list; each superadmin also gets a
   **consolidated** list of everyone's open tasks (overdue flagged). The digest is **skipped on Sundays

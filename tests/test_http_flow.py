@@ -89,6 +89,23 @@ def test_extend_via_http_keeps_history(client, db):
     assert "Original" in page.text and "Current" in page.text
 
 
+def test_completed_tasks_show_on_board(client, db):
+    from app.services import complete_task, create_task
+    g = login_as(client, db, "gourav@bharatsteels.in")
+    ravi = db.query(User).filter_by(email="ravi@bharatsteels.in").one()
+    t = create_task(db, created_by=g, assigned_to=ravi, title="Finished job",
+                    deadline=today_ist() + timedelta(days=2))
+    complete_task(db, task=t, actor=ravi, note="done")
+    # superadmin board shows the completed task (all)
+    assert "Finished job" in client.get("/").text
+    # the assignee sees their own completed task
+    login_as(client, db, "ravi@bharatsteels.in")
+    assert "Finished job" in client.get("/").text
+    # another general user does NOT see it
+    login_as(client, db, "priya@bharatsteels.in")
+    assert "Finished job" not in client.get("/").text
+
+
 def test_employee_cannot_open_others_task(client, db):
     g = login_as(client, db, "gourav@bharatsteels.in")
     ravi = db.query(User).filter_by(email="ravi@bharatsteels.in").one()

@@ -34,8 +34,10 @@ from ..models import (OPEN_STATUSES, ROLE_SUPERADMIN, ROLES, WEEKDAYS, Holiday, 
 from ..services import (
     TaskError,
     add_attachment,
+    all_completed_tasks,
     all_open_tasks,
     complete_task,
+    completed_tasks_for,
     create_schedule,
     create_task,
     delete_task,
@@ -266,11 +268,13 @@ def dashboard(request: Request, db: Session = Depends(get_db),
             (TaskSchedule.assigned_to_id == user.id) | (TaskSchedule.created_by_id == user.id))
     schedules = list(db.scalars(sched_stmt.order_by(TaskSchedule.created_at.desc())))
 
+    completed = all_completed_tasks(db) if user.is_superadmin else completed_tasks_for(db, user.id)
+
     return templates.TemplateResponse(request, "dashboard.html", {
         "me": user, "tasks": tasks, "today": today,
         "overdue": overdue, "due_today": due_today, "groups": groups,
         "people": groups, "assignable": assignable, "schedules": schedules,
-        "weekdays": list(enumerate(WEEKDAYS)),
+        "completed": completed, "weekdays": list(enumerate(WEEKDAYS)),
         "ok": request.query_params.get("ok"), "err": request.query_params.get("err"),
     })
 
@@ -283,12 +287,20 @@ def create(request: Request, title: str = Form(...), deadline: str = Form(""),
            attachments: list[UploadFile] = File(default=[]),
            repetitive: Optional[str] = Form(None),
            frequency: str = Form("daily"), start_date: str = Form(""), end_date: str = Form(""),
-           day_of_week: str = Form(""), day_of_month: str = Form(""),
+           days_of_week: list[str] = Form(default=[]), days_of_month: str = Form(""),
            deadline_offset: str = Form("0"),
            user: User = Depends(require_user), db: Session = Depends(get_db)):
     def _int_or_none(s):
         s = (s or "").strip()
         return int(s) if s.isdigit() else None
+
+    def _int_list(values):
+        out = []
+        for v in values:
+            for part in str(v).replace(" ", "").split(","):
+                if part.isdigit():
+                    out.append(int(part))
+        return out
     try:
         # Work out the assignees. Superadmins can pick one or many; everyone else -> self.
         if user.is_superadmin and assigned_to_ids:
@@ -310,12 +322,14 @@ def create(request: Request, title: str = Form(...), deadline: str = Form(""),
         if repetitive == "on":
             sd = _parse_date(start_date)
             ed = _parse_date(end_date) if end_date else None
-            dow, dom, off = _int_or_none(day_of_week), _int_or_none(day_of_month), (_int_or_none(deadline_offset) or 0)
+            dow = _int_list(days_of_week)            # weekday checkboxes (0-6)
+            dom = _int_list([days_of_month])          # comma text "1, 15"
+            off = _int_or_none(deadline_offset) or 0
             label = None
             for a in assignees:
                 sch = create_schedule(db, created_by=user, assigned_to=a, title=title,
                                       frequency=frequency, start_date=sd, end_date=ed,
-                                      day_of_week=dow, day_of_month=dom, deadline_offset_days=off,
+                                      days_of_week=dow, days_of_month=dom, deadline_offset_days=off,
                                       description=description, priority=priority)
                 label = sch.frequency_label
             generate_due_recurring_tasks(db)

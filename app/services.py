@@ -269,19 +269,23 @@ def schedule_occurrences(sch: TaskSchedule, until: date):
             d += timedelta(days=1)
             guard += 1
     elif freq == FREQ_WEEKLY:
-        target = sch.day_of_week if sch.day_of_week is not None else start.weekday()
-        d = start + timedelta(days=(target - start.weekday()) % 7)
-        while d <= last and guard < 3000:
+        targets = sorted(set(sch.weekday_list)) or [start.weekday()]
+        dates = set()
+        for t in targets:
+            d = start + timedelta(days=(t - start.weekday()) % 7)
+            while d <= last:
+                dates.add(d)
+                d += timedelta(days=7)
+        for d in sorted(dates):
             yield d
-            d += timedelta(days=7)
-            guard += 1
     elif freq == FREQ_MONTHLY:
-        anchor = sch.day_of_month or start.day
+        anchors = sorted(set(sch.monthday_list)) or [start.day]
         m = date(start.year, start.month, 1)
         while m <= last and guard < 1200:
-            occ = _clamp(m.year, m.month, anchor)
-            if start <= occ <= last:
-                yield occ
+            for dd in anchors:
+                occ = _clamp(m.year, m.month, dd)
+                if start <= occ <= last:
+                    yield occ
             m += relativedelta(months=1)
             guard += 1
     else:  # quarterly / half_yearly / yearly — anchor on the start date
@@ -298,9 +302,10 @@ def schedule_occurrences(sch: TaskSchedule, until: date):
 
 def create_schedule(
     db: Session, *, created_by: User, assigned_to: User, title: str, frequency: str,
-    start_date: date, end_date: Optional[date] = None, day_of_week: Optional[int] = None,
-    day_of_month: Optional[int] = None, deadline_offset_days: int = 0,
-    description: str = "", priority: str = "medium", commit: bool = True,
+    start_date: date, end_date: Optional[date] = None,
+    days_of_week: Optional[list[int]] = None, days_of_month: Optional[list[int]] = None,
+    deadline_offset_days: int = 0, description: str = "", priority: str = "medium",
+    commit: bool = True,
 ) -> TaskSchedule:
     title = (title or "").strip()
     if not title:
@@ -313,18 +318,21 @@ def create_schedule(
         raise TaskError("Deadline days cannot be negative.")
     if created_by.role != ROLE_SUPERADMIN and assigned_to.id != created_by.id:
         raise TaskError("You can only set up recurring tasks for yourself.")
-    if frequency == FREQ_WEEKLY and day_of_week is None:
-        raise TaskError("Please choose which day of the week.")
-    if frequency == FREQ_MONTHLY and not day_of_month:
-        raise TaskError("Please choose which day of the month.")
+
+    dow = sorted({d for d in (days_of_week or []) if 0 <= d <= 6})
+    dom = sorted({d for d in (days_of_month or []) if 1 <= d <= 31})
+    if frequency == FREQ_WEEKLY and not dow:
+        raise TaskError("Please choose at least one day of the week.")
+    if frequency == FREQ_MONTHLY and not dom:
+        raise TaskError("Please choose at least one day of the month (1-31).")
 
     sch = TaskSchedule(
         title=title, description=(description or "").strip() or None,
         priority=priority if priority in ("low", "medium", "high") else "medium",
         assigned_to_id=assigned_to.id, created_by_id=created_by.id,
         frequency=frequency, start_date=start_date, end_date=end_date,
-        day_of_week=day_of_week if frequency == FREQ_WEEKLY else None,
-        day_of_month=day_of_month if frequency == FREQ_MONTHLY else None,
+        days_of_week=",".join(str(d) for d in dow) if frequency == FREQ_WEEKLY else None,
+        days_of_month=",".join(str(d) for d in dom) if frequency == FREQ_MONTHLY else None,
         deadline_offset_days=deadline_offset_days, active=True,
     )
     db.add(sch)
@@ -384,5 +392,25 @@ def all_open_tasks(db: Session) -> list[Task]:
         select(Task)
         .where(Task.status.in_(OPEN_STATUSES))
         .order_by(Task.current_deadline.asc(), Task.id.asc())
+    )
+    return list(db.scalars(stmt))
+
+
+def completed_tasks_for(db: Session, user_id: int, limit: int = 50) -> list[Task]:
+    stmt = (
+        select(Task)
+        .where(Task.assigned_to_id == user_id, Task.status == STATUS_COMPLETED)
+        .order_by(Task.completed_at.desc(), Task.id.desc())
+        .limit(limit)
+    )
+    return list(db.scalars(stmt))
+
+
+def all_completed_tasks(db: Session, limit: int = 50) -> list[Task]:
+    stmt = (
+        select(Task)
+        .where(Task.status == STATUS_COMPLETED)
+        .order_by(Task.completed_at.desc(), Task.id.desc())
+        .limit(limit)
     )
     return list(db.scalars(stmt))

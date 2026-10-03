@@ -94,15 +94,19 @@
           </select>
         </div>
         <div id="weekly-field" style="display:none">
-          <label>Which day of the week</label>
-          <select name="day_of_week">
-            {% for i, wd in weekdays %}<option value="{{ i }}">{{ wd }}</option>{% endfor %}
-          </select>
+          <label>Which day(s) of the week <span class="help" style="display:inline">(tick one or more)</span></label>
+          <div style="display:flex;flex-wrap:wrap;gap:.3rem .9rem">
+            {% for i, wd in weekdays %}
+            <label style="display:flex;align-items:center;gap:.35rem;font-weight:400;margin:0">
+              <input type="checkbox" name="days_of_week" value="{{ i }}" style="width:auto"> {{ wd[:3] }}
+            </label>
+            {% endfor %}
+          </div>
         </div>
         <div id="monthly-field" style="display:none">
-          <label>Which day of the month</label>
-          <input type="number" name="day_of_month" min="1" max="31" placeholder="1-31">
-          <p class="help">If a month is shorter, the last day is used.</p>
+          <label>Which day(s) of the month</label>
+          <input type="text" name="days_of_month" placeholder="e.g. 1, 15" inputmode="numeric">
+          <p class="help">Enter one or more dates 1-31, comma separated. A shorter month uses its last day.</p>
         </div>
         <div class="row">
           <div>
@@ -196,6 +200,27 @@
 </div>
 {% endif %}
 
+{% if completed %}
+<details class="card">
+  <summary>Completed {% if me.is_superadmin %}(all, recent){% else %}(mine, recent){% endif %} &middot; {{ completed|length }}</summary>
+  <div style="margin-top:.6rem;overflow-x:auto">
+    <table>
+      <thead><tr><th>Task</th>{% if me.is_superadmin %}<th>Assignee</th>{% endif %}<th>Completed</th><th></th></tr></thead>
+      <tbody>
+      {% for t in completed %}
+        <tr>
+          <td><a href="/tasks/{{ t.id }}">{{ t.title }}</a>{% if t.is_self_raised %} <span class="badge b-self">Self</span>{% endif %}</td>
+          {% if me.is_superadmin %}<td>{{ t.assignee.name }}</td>{% endif %}
+          <td class="help">{{ t.completed_at.strftime('%d-%b-%Y') if t.completed_at else '—' }}</td>
+          <td style="text-align:right"><a class="btn ghost sm" href="/tasks/{{ t.id }}">Open</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</details>
+{% endif %}
+
 <script>
 function wtToggleRepeat(){
   var cb = document.getElementById('repetitive'); if(!cb) return;
@@ -215,8 +240,8 @@ function wtToggleFreq(){
   var mo = document.getElementById('monthly-field');
   wk.style.display = (f === 'weekly') ? '' : 'none';
   mo.style.display = (f === 'monthly') ? '' : 'none';
-  wk.querySelector('select').disabled = (f !== 'weekly');
-  mo.querySelector('input').disabled = (f !== 'monthly');
+  wk.querySelectorAll('input,select').forEach(function(e){ e.disabled = (f !== 'weekly'); });
+  mo.querySelectorAll('input,select').forEach(function(e){ e.disabled = (f !== 'monthly'); });
 }
 document.addEventListener('DOMContentLoaded', wtToggleRepeat);
 </script>
