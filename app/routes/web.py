@@ -5,7 +5,8 @@ from typing import Optional
 
 import io
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import (APIRouter, BackgroundTasks, Depends, File, Form, HTTPException,
+                     Request, UploadFile)
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
@@ -45,6 +46,7 @@ from ..services import (
     extend_deadline,
     generate_due_recurring_tasks,
     open_tasks_for,
+    reassign_task,
     reopen_task,
 )
 
@@ -281,7 +283,8 @@ def dashboard(request: Request, db: Session = Depends(get_db),
 
 # ---- task actions ---------------------------------------------------------
 @router.post("/tasks/create")
-def create(request: Request, title: str = Form(...), deadline: str = Form(""),
+def create(request: Request, background_tasks: BackgroundTasks,
+           title: str = Form(...), deadline: str = Form(""),
            description: str = Form(""), priority: str = Form("medium"),
            assigned_to_ids: list[str] = Form(default=[]),
            attachments: list[UploadFile] = File(default=[]),
@@ -336,37 +339,54 @@ def create(request: Request, title: str = Form(...), deadline: str = Form(""),
             who = "yourself" if assignees == [user] else f"{len(assignees)} people"
             return _flash("/", f"Recurring task set up for {who} ({label}).")
 
-        # one-off: a separate task per assignee, each notified
+        # one-off: a separate task per assignee. `fresh` holds only the newly
+        # created ones (a double-click that hits an existing task is skipped).
         d = _parse_date(deadline)
-        made = []
+        made, fresh = [], []
         for a in assignees:
             t = create_task(db, created_by=user, assigned_to=a, title=title,
                             deadline=d, description=description, priority=priority)
-            _save_uploads(db, t, user, attachments)
             made.append(t)
+            if not getattr(t, "_deduped", False):
+                _save_uploads(db, t, user, attachments)
+                fresh.append(t)
     except TaskError as e:
         return _flash("/", str(e), ok=False)
-    for t in made:
-        notifications.notify_new_task(db, t)
+    # Send reminders AFTER the response goes back, so saving is instant.
+    for t in fresh:
+        background_tasks.add_task(notifications.notify_new_task_bg, t.id)
     if len(made) == 1:
         who = "yourself" if made[0].is_self_raised else made[0].assignee.name
-        return _flash("/", f"Task raised for {who}. Reminder sent.")
-    return _flash("/", f"Task raised for {len(made)} people. Reminders sent.")
+        return _flash("/", f"Task raised for {who}. Reminder is on its way.")
+    return _flash("/", f"Task raised for {len(made)} people. Reminders are on their way.")
 
 
 @router.post("/tasks/{task_id}/edit")
-def edit_task_route(task_id: int, title: str = Form(...), description: str = Form(""),
+def edit_task_route(task_id: int, background_tasks: BackgroundTasks,
+                    title: str = Form(...), description: str = Form(""),
                     priority: str = Form("medium"), deadline: str = Form(""),
+                    assigned_to_ids: list[str] = Form(default=[]),
                     user: User = Depends(require_user), db: Session = Depends(get_db)):
     task = db.get(Task, task_id)
     if not task:
         raise HTTPException(404, "Task not found")
+    notify = []
     try:
         edit_task(db, task=task, actor=user, title=title, description=description,
                   priority=priority, new_deadline=_parse_date(deadline) if deadline else None)
+        # Reassignment is a superadmin action (only they can pick other people).
+        if user.is_superadmin and assigned_to_ids:
+            ids = [int(s.strip()) for s in assigned_to_ids if s.strip().isdigit()]
+            if ids:
+                notify = reassign_task(db, task=task, actor=user, assignee_ids=ids)
     except TaskError as e:
         return _flash(f"/tasks/{task_id}", str(e), ok=False)
-    return _flash(f"/tasks/{task_id}", "Task updated.")
+    for t in notify:
+        background_tasks.add_task(notifications.notify_new_task_bg, t.id)
+    msg = "Task updated."
+    if notify:
+        msg = f"Task updated and assigned to {len(notify)} new person(s). Reminders are on their way."
+    return _flash(f"/tasks/{task_id}", msg)
 
 
 @router.post("/tasks/{task_id}/delete")
@@ -424,8 +444,14 @@ def task_detail(task_id: int, request: Request, db: Session = Depends(get_db),
     attachments = list(db.scalars(
         select(TaskAttachment).where(TaskAttachment.task_id == task.id)
         .order_by(TaskAttachment.created_at)))
+    # Superadmins can reassign, so give them the roster for the edit form.
+    assignable = []
+    if user.is_superadmin:
+        assignable = list(db.scalars(
+            select(User).where(User.active.is_(True)).order_by(User.name)))
     return templates.TemplateResponse(request, "task_detail.html", {
         "me": user, "task": task, "today": today_ist(), "attachments": attachments,
+        "assignable": assignable,
         "can_act": user.is_superadmin or task.assigned_to_id == user.id,
         "can_edit": user.is_superadmin or task.created_by_id == user.id,
         "ok": request.query_params.get("ok"), "err": request.query_params.get("err"),
@@ -504,8 +530,8 @@ def extend(task_id: int, new_deadline: str = Form(...), reason: str = Form(...),
 
 
 @router.post("/tasks/{task_id}/complete")
-def complete(task_id: int, note: str = Form(""), user: User = Depends(require_user),
-             db: Session = Depends(get_db)):
+def complete(task_id: int, background_tasks: BackgroundTasks, note: str = Form(""),
+             user: User = Depends(require_user), db: Session = Depends(get_db)):
     task = db.get(Task, task_id)
     if not task:
         raise HTTPException(404, "Task not found")
@@ -513,7 +539,7 @@ def complete(task_id: int, note: str = Form(""), user: User = Depends(require_us
         complete_task(db, task=task, actor=user, note=note)
     except TaskError as e:
         return _flash(f"/tasks/{task_id}", str(e), ok=False)
-    notifications.notify_task_completed(db, task)
+    background_tasks.add_task(notifications.notify_task_completed_bg, task.id)
     return _flash(f"/tasks/{task_id}", "Marked as completed.")
 
 

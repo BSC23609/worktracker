@@ -14,6 +14,8 @@ from typing import Optional
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from datetime import timezone
+
 from .db import now_ist, today_ist
 from .models import (
     OPEN_STATUSES,
@@ -28,6 +30,45 @@ from .models import (
 
 class TaskError(Exception):
     """Raised on an invalid lifecycle operation (mapped to HTTP 400 by routes)."""
+
+
+# Window within which an identical task from the same person counts as an
+# accidental double-submit (e.g. clicking "Raise task" two or three times).
+DEDUPE_WINDOW_SECONDS = 120
+
+
+def _recent_duplicate(
+    db: Session, *, created_by_id: int, assigned_to_id: int, title: str, deadline: date,
+) -> Optional[Task]:
+    """Return a just-created, still-open task identical to the one about to be
+    raised, if one exists inside DEDUPE_WINDOW_SECONDS. Guards against
+    double/triple-clicks creating two or three copies of the same task."""
+    row = db.scalar(
+        select(Task)
+        .where(
+            Task.created_by_id == created_by_id,
+            Task.assigned_to_id == assigned_to_id,
+            func.lower(Task.title) == title.lower(),
+            Task.current_deadline == deadline,
+            Task.status.in_(OPEN_STATUSES),
+            Task.schedule_id.is_(None),
+        )
+        .order_by(Task.id.desc())
+        .limit(1)
+    )
+    if row is None:
+        return None
+    created = row.created_at
+    if created is None:
+        return row  # created in a racing transaction moments ago
+    now = now_ist()
+    # created_at may be naive (SQLite) or tz-aware (Postgres); normalise both.
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+    if (now - created).total_seconds() <= DEDUPE_WINDOW_SECONDS:
+        return row
+    return None
 
 
 def create_task(
@@ -52,6 +93,17 @@ def create_task(
         raise TaskError("You can only raise tasks for yourself.")
     if not assigned_to.active:
         raise TaskError("Cannot assign to an inactive user.")
+
+    # Double-submit guard: if the same person just raised an identical task,
+    # return that one instead of making a duplicate. (_deduped lets the caller
+    # know not to re-notify / re-upload.)
+    existing = _recent_duplicate(
+        db, created_by_id=created_by.id, assigned_to_id=assigned_to.id,
+        title=title, deadline=deadline,
+    )
+    if existing is not None:
+        existing._deduped = True
+        return existing
 
     task = Task(
         title=title,
@@ -78,6 +130,7 @@ def create_task(
     if commit:
         db.commit()
         db.refresh(task)
+    task._deduped = False
     return task
 
 
@@ -157,6 +210,80 @@ def edit_task(
         db.commit()
         db.refresh(task)
     return task
+
+
+def _clone_task_for(db: Session, src: Task, assignee_id: int, actor: User) -> Task:
+    """Make a fresh copy of `src` for another person. Used when a task is
+    handed to several people at once. The copy starts at the source's current
+    deadline (even if that's already past) so an in-flight task can be shared."""
+    dl = src.current_deadline
+    task = Task(
+        title=src.title, description=src.description, priority=src.priority,
+        status=STATUS_PENDING, assigned_to_id=assignee_id, created_by_id=actor.id,
+        original_deadline=dl, current_deadline=dl,
+    )
+    db.add(task)
+    db.flush()
+    db.add(TaskDeadline(task_id=task.id, seq=1, deadline=dl, reason=None, set_by_id=actor.id))
+    return task
+
+
+def reassign_task(
+    db: Session, *, task: Task, actor: User, assignee_ids: list[int], commit: bool = True,
+) -> list[Task]:
+    """Reassign `task` to one or more people.
+
+    The FIRST person ticked becomes this task's assignee; every additional
+    person gets their own copy of the task. Returns the list of tasks whose
+    assignee is newly set (so the caller can send each a 'new task' notice) --
+    an empty list means nothing actually changed.
+    """
+    if not _can_manage(task, actor):
+        raise TaskError("Only the person who assigned this task can reassign it.")
+    if task.status == STATUS_COMPLETED:
+        raise TaskError("A completed task can't be reassigned. Reopen it first.")
+
+    ids: list[int] = []
+    seen: set[int] = set()
+    for i in assignee_ids:
+        if i and i not in seen:
+            seen.add(i)
+            ids.append(i)
+    if not ids:
+        raise TaskError("Select at least one person to assign to.")
+
+    targets = [db.get(User, i) for i in ids]
+    targets = [u for u in targets if u is not None]
+    if not targets:
+        raise TaskError("Select at least one valid person.")
+    for u in targets:
+        if not u.active:
+            raise TaskError(f"{u.name} is inactive and can't be assigned.")
+        # A non-superadmin can only ever hold their own tasks.
+        if u.id != actor.id and actor.role != ROLE_SUPERADMIN:
+            raise TaskError("Only a superadmin can assign tasks to other people.")
+
+    notify: list[Task] = []
+    primary = targets[0]
+    if task.assigned_to_id != primary.id:
+        task.assigned_to_id = primary.id
+        notify.append(task)
+
+    for u in targets[1:]:
+        if u.id == task.assigned_to_id:
+            continue  # already holds this very task
+        # Don't create a second identical open copy for someone who has one.
+        dup = _recent_duplicate(db, created_by_id=actor.id, assigned_to_id=u.id,
+                                title=task.title, deadline=task.current_deadline)
+        if dup is not None:
+            continue
+        notify.append(_clone_task_for(db, task, u.id, actor))
+
+    if commit:
+        db.commit()
+        for t in notify:
+            db.refresh(t)
+    return notify
 
 
 def delete_task(db: Session, *, task: Task, actor: User, commit: bool = True) -> None:

@@ -135,3 +135,72 @@ def test_delete_via_http_by_creator(client, db):
     r = client.post(f"/tasks/{t.id}/delete", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"].startswith("/")
     assert db.get(Task, t.id) is None
+
+
+# ---- reassign from the edit form ------------------------------------------
+def test_superadmin_reassigns_to_a_different_person(client, db):
+    g = login_as(client, db, "gourav@bharatsteels.in")
+    ravi, priya = _u(db, "ravi@bharatsteels.in"), _u(db, "priya@bharatsteels.in")
+    t = create_task(db, created_by=g, assigned_to=ravi, title="Handover",
+                    deadline=today_ist() + timedelta(days=4))
+    r = client.post(f"/tasks/{t.id}/edit", data={
+        "title": "Handover", "priority": "medium",
+        "assigned_to_ids": [str(priya.id)]}, follow_redirects=False)
+    assert r.status_code == 303
+    db.refresh(t)
+    assert t.assigned_to_id == priya.id                       # handed over
+    assert db.query(Task).filter_by(title="Handover").count() == 1  # no copies
+
+
+def test_superadmin_reassigns_to_multiple_makes_copies(client, db):
+    g = login_as(client, db, "gourav@bharatsteels.in")
+    ravi = _u(db, "ravi@bharatsteels.in")
+    priya = _u(db, "priya@bharatsteels.in")
+    jeeva = _u(db, "jeeva@bharatsteels.in")
+    t = create_task(db, created_by=g, assigned_to=ravi, title="Shared job",
+                    deadline=today_ist() + timedelta(days=4))
+    r = client.post(f"/tasks/{t.id}/edit", data={
+        "title": "Shared job", "priority": "medium",
+        "assigned_to_ids": [str(ravi.id), str(priya.id), str(jeeva.id)]},
+        follow_redirects=False)
+    assert r.status_code == 303
+    tasks = db.query(Task).filter_by(title="Shared job").all()
+    assert len(tasks) == 3                                    # ravi keeps his + 2 copies
+    assert {x.assigned_to_id for x in tasks} == {ravi.id, priya.id, jeeva.id}
+    db.refresh(t)
+    assert t.assigned_to_id == ravi.id                        # original untouched
+
+
+def test_general_user_edit_cannot_reassign_to_others(client, db):
+    ravi = login_as(client, db, "ravi@bharatsteels.in")
+    priya = _u(db, "priya@bharatsteels.in")
+    t = create_task(db, created_by=ravi, assigned_to=ravi, title="Mine only",
+                    deadline=today_ist() + timedelta(days=3))
+    client.post(f"/tasks/{t.id}/edit", data={
+        "title": "Mine only", "priority": "low",
+        "assigned_to_ids": [str(priya.id)]}, follow_redirects=False)
+    db.refresh(t)
+    assert t.assigned_to_id == ravi.id                        # ignored for non-superadmin
+    assert db.query(Task).filter_by(title="Mine only").count() == 1
+
+
+# ---- double-submit guard --------------------------------------------------
+def test_double_submit_creates_only_one_task(client, db):
+    login_as(client, db, "gourav@bharatsteels.in")
+    ravi = _u(db, "ravi@bharatsteels.in")
+    payload = {"title": "Only once", "priority": "high",
+               "deadline": _future(3), "assigned_to_ids": [str(ravi.id)]}
+    for _ in range(3):                                        # user clicks three times
+        assert client.post("/tasks/create", data=payload,
+                           follow_redirects=False).status_code == 303
+    assert db.query(Task).filter_by(title="Only once").count() == 1
+
+
+def test_same_title_different_deadline_is_not_deduped(client, db):
+    login_as(client, db, "gourav@bharatsteels.in")
+    ravi = _u(db, "ravi@bharatsteels.in")
+    client.post("/tasks/create", data={"title": "Repeat", "deadline": _future(2),
+                "assigned_to_ids": [str(ravi.id)]})
+    client.post("/tasks/create", data={"title": "Repeat", "deadline": _future(5),
+                "assigned_to_ids": [str(ravi.id)]})
+    assert db.query(Task).filter_by(title="Repeat").count() == 2

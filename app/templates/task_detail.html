@@ -55,6 +55,18 @@
       {% endif %}
     </div>
     {% if not task.is_self_raised %}<p class="help">Correcting the deadline here is not logged as a revision &mdash; use "Revise deadline" below for a dated change with a reason.</p>{% endif %}
+    {% if me.is_superadmin %}
+    <label style="margin-top:.9rem">Assigned to <span class="help" style="display:inline">(tick one or more)</span></label>
+    <div style="max-height:160px;overflow:auto;border:1px solid var(--g200);border-radius:6px;padding:.5rem .7rem;background:#fff">
+      {% for u in assignable %}
+      <label style="display:flex;align-items:center;gap:.5rem;font-weight:400;margin:.15rem 0">
+        <input type="checkbox" name="assigned_to_ids" value="{{ u.id }}" {% if u.id==task.assigned_to_id %}checked{% endif %} style="width:auto">
+        <span>{{ u.name }}{% if u.id==me.id %} (me){% endif %}{% if u.is_superadmin %} &middot; superadmin{% endif %}</span>
+      </label>
+      {% endfor %}
+    </div>
+    <p class="help">The first person ticked keeps this task; anyone else you add gets their own copy. Untick the current assignee and tick someone else to hand it over. New assignees get a reminder.</p>
+    {% endif %}
     <button class="btn">Save changes</button>
   </form>
   <form method="post" action="/tasks/{{ task.id }}/delete" style="margin-top:.8rem;border-top:1px solid var(--g100);padding-top:.8rem">

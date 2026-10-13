@@ -41,6 +41,25 @@
   {% include "_companies.html" %}
 </footer>
 {% endif %}
+<script>
+// Stop accidental double/triple submits: once a form is submitted, disable its
+// submit button so a second or third click can't raise duplicate tasks.
+document.addEventListener('submit', function(e){
+  var form = e.target;
+  if(!(form instanceof HTMLFormElement)) return;
+  var btns = form.querySelectorAll('button[type="submit"], button:not([type]), input[type="submit"]');
+  // Defer so the browser's native submit proceeds first (and any onclick
+  // confirm() has already resolved — if it cancelled, submit never fired).
+  setTimeout(function(){
+    btns.forEach(function(b){
+      if(b.disabled) return;
+      b.disabled = true;
+      b.dataset.wtLabel = b.textContent;
+      if(b.tagName === 'BUTTON'){ b.textContent = 'Working…'; }
+    });
+  }, 0);
+}, true);
+</script>
 <script>if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('/sw.js').catch(function(){});});}</script>
 </body>
 </html>

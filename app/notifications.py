@@ -132,7 +132,7 @@ def send_email(db: Session, *, to: str, subject: str, body: str, kind: str,
         msg["Subject"] = subject
         msg.attach(MIMEText(body, "plain", "utf-8"))
         ctx = ssl.create_default_context()
-        with smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT, timeout=20) as s:
+        with smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT, timeout=15) as s:
             s.starttls(context=ctx)
             if config.SMTP_USER:
                 s.login(config.SMTP_USER, config.SMTP_PASS)
@@ -173,7 +173,7 @@ def send_whatsapp(db: Session, *, to: Optional[str], template: str, params: list
             params={"whatsappNumber": number},
             json=payload,
             headers={"Authorization": auth, "Content-Type": "application/json"},
-            timeout=20,
+            timeout=15,
         )
         ok = resp.status_code < 400 and (resp.json().get("result") is not False
                                          if resp.headers.get("content-type", "").startswith("application/json") else True)
@@ -286,3 +286,43 @@ def notify_new_task(db: Session, task: Task) -> None:
     send_whatsapp(db, to=task.assignee.whatsapp, template=config.WATI_TEMPLATE_NEW_TASK,
                   params=params, kind="new_task", task_id=task.id)
     db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Background wrappers — run AFTER the HTTP response is sent (FastAPI
+# BackgroundTasks). This is what keeps saving a task instant: the slow network
+# round-trips to SMTP/WATI no longer block the save.
+# ---------------------------------------------------------------------------
+def _open_bg_session():
+    """Open a DB session for background notification work.
+
+    Production: a brand-new session, because the request's own session is
+    already closed by the time a background task runs. Tests override this to
+    reuse their in-memory session (and mark it not-to-close)."""
+    from .db import SessionLocal
+    return SessionLocal()
+
+
+def _dispatch_bg(task_id: int, fn) -> None:
+    db = _open_bg_session()
+    close = getattr(db, "_wt_bg_close", True)
+    try:
+        task = db.get(Task, task_id)
+        if task is not None:
+            fn(db, task)
+    except Exception:  # noqa: BLE001 - never let a notification crash the worker
+        pass
+    finally:
+        if close:
+            try:
+                db.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+
+def notify_new_task_bg(task_id: int) -> None:
+    _dispatch_bg(task_id, notify_new_task)
+
+
+def notify_task_completed_bg(task_id: int) -> None:
+    _dispatch_bg(task_id, notify_task_completed)

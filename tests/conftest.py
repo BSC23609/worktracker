@@ -51,9 +51,17 @@ def db():
 @pytest.fixture()
 def client(db):
     app.dependency_overrides[get_db] = lambda: db
+    # Background notifications (FastAPI BackgroundTasks) run on their own
+    # session in production; in tests, reuse the in-memory session and don't
+    # close it so later assertions on `db` still work.
+    from app import notifications
+    _orig_bg = notifications._open_bg_session
+    db._wt_bg_close = False
+    notifications._open_bg_session = lambda: db
     from fastapi.testclient import TestClient
     c = TestClient(app)
     yield c
+    notifications._open_bg_session = _orig_bg
     app.dependency_overrides.clear()
 
 
