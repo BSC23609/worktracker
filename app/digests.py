@@ -49,6 +49,10 @@ def run_daily_digests(db: Session, *, on: date | None = None, force: bool = Fals
             summary["employee_skipped"] += 1
             continue
         tasks = open_tasks_for(db, user.id)
+        # Don't nudge people who have nothing pending — no email, no WhatsApp.
+        if not tasks:
+            summary["employee_skipped"] += 1
+            continue
         subject, body, params = notifications.render_employee_digest(user, tasks, today)
         sent_e = notifications.send_email(db, to=user.email, subject=subject, body=body,
                                           kind="employee_digest", dedupe_key=key)

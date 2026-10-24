@@ -23,6 +23,12 @@ def test_admin_digest_skipped_for_opted_out_admin(db, monkeypatch):
     gourav = db.query(User).filter_by(email="gourav@bharatsteels.in").one()
     gourav.wants_admin_digest = False      # opt Gourav out
     db.commit()
+    # give Gourav a pending task so he still receives his own employee digest
+    from app.services import create_task
+    from app.db import today_ist
+    from datetime import timedelta
+    create_task(db, created_by=gourav, assigned_to=gourav, title="Gourav task",
+                deadline=today_ist() + timedelta(days=3))
     rec = _sent_recorder(db, monkeypatch)
     r = run_daily_digests(db)
     assert r["admin_sent"] == 1 and r["admin_skipped"] == 1

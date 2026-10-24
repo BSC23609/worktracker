@@ -61,17 +61,19 @@ def test_daily_digest_is_idempotent_per_day(db, monkeypatch):
                         _fake_sender(db, channel="email"))
 
     first = run_daily_digests(db)
-    # 4 users each get an employee digest; 2 superadmins also get an admin digest
-    assert first["employee_sent"] == 4
+    # Only Ravi has a pending task, so only he gets an employee digest; the
+    # other 3 have zero dues and are skipped. Both superadmins get the admin one.
+    assert first["employee_sent"] == 1
+    assert first["employee_skipped"] == 3
     assert first["admin_sent"] == 2
 
     second = run_daily_digests(db)
     assert second["employee_sent"] == 0 and second["employee_skipped"] == 4
     assert second["admin_sent"] == 0 and second["admin_skipped"] == 2
 
-    # force=True overrides the dedupe
+    # force=True overrides the dedupe (Ravi again; the zero-due 3 stay skipped)
     forced = run_daily_digests(db, force=True)
-    assert forced["employee_sent"] == 4 and forced["admin_sent"] == 2
+    assert forced["employee_sent"] == 1 and forced["admin_sent"] == 2
 
 
 def _fake_sender(db, channel):

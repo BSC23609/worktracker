@@ -32,6 +32,13 @@ def test_digest_runs_on_working_day(client, db, monkeypatch):
     monkeypatch.setattr(notifications, "send_email",
                         lambda session, *, to, subject, body, kind, dedupe_key=None, task_id=None:
                         sent.append(to) or True)
+    # give someone a pending task so there's an employee digest to send
+    from app.services import create_task
+    from app.db import today_ist
+    g = db.query(User).filter_by(email="gourav@bharatsteels.in").one()
+    ravi = db.query(User).filter_by(email="ravi@bharatsteels.in").one()
+    create_task(db, created_by=g, assigned_to=ravi, title="Pending work",
+                deadline=today_ist() + timedelta(days=5))
     monday = _next_weekday(date(2026, 1, 5), 0)
     r = run_daily_digests(db, on=monday)
     assert r["employee_sent"] >= 1
