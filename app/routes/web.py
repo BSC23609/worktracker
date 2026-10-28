@@ -93,6 +93,53 @@ def login(request: Request, identifier: str = Form(...), password: str = Form(..
     return resp
 
 
+# ---- Group single sign-on (app.thebharatsteelgroup.com) ----
+# The group portal signs the person in once, then sends them here with a one-minute token signed
+# with GROUP_SSO_SECRET (shared only by the portal and this app). We check it, find the user by
+# email (or emp_code) and start the normal session. The email + password login still works.
+def _sso_fail(msg: str):
+    from html import escape
+    return HTMLResponse(
+        "<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'>"
+        "<body style='font-family:system-ui,sans-serif;max-width:440px;margin:15vh auto;padding:0 16px'>"
+        f"<h2>Could not sign you in</h2><p style='color:#5b6b7b'>{escape(msg)}</p>"
+        "<p><a href='/login'>Sign in with your email and password</a></p>", status_code=401)
+
+
+@router.get("/auth/sso")
+def group_sso(request: Request, token: str = "", next: str = "", db: Session = Depends(get_db)):
+    import os
+    import jwt as _jwt
+    secret = os.getenv("GROUP_SSO_SECRET", "")
+    if not secret:
+        return _sso_fail("Group sign-in is not set up on this app yet.")
+    try:
+        claims = _jwt.decode(token, secret, algorithms=["HS256"], issuer="bsg-hub",
+                             audience=os.getenv("GROUP_SSO_APP_KEY", "worktracker"), leeway=10)
+    except _jwt.ExpiredSignatureError:
+        return _sso_fail("That sign-in link expired. Open Work Tracker again from the group portal.")
+    except Exception:
+        return _sso_fail("Group sign-in could not be verified.")
+    ident = str(claims.get("sub") or "").strip()
+    email = str(claims.get("email") or "").strip().lower()
+    user = None
+    if "@" in ident:
+        user = db.scalar(select(User).where(func.lower(User.email) == ident.lower()))
+    elif ident:
+        user = db.scalar(select(User).where(func.upper(User.emp_code) == ident.upper()))
+    if user is None and email:
+        user = db.scalar(select(User).where(func.lower(User.email) == email))
+    if user is None or not user.active:
+        return _sso_fail("Your group account is not linked to a Work Tracker user. Ask IT to check your email in the group portal.")
+    target = next if (next.startswith("/") and not next.startswith("//")) else "/"
+    resp = RedirectResponse(target, status_code=303)
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    resp.set_cookie(config.SESSION_COOKIE, make_session_token(user.id),
+                    max_age=config.SESSION_MAX_AGE, httponly=True,
+                    samesite="lax", secure=config.COOKIE_SECURE, path="/")
+    return resp
+
+
 @router.get("/whoami")
 def whoami(request: Request, user: Optional[User] = Depends(current_user)):
     """Diagnostic (no redirect): shows whether the current session is valid and why."""

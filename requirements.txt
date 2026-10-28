@@ -8,3 +8,4 @@ itsdangerous==2.2.0
 python-multipart==0.0.20
 requests==2.32.3
 python-dateutil==2.9.0.post0
+PyJWT==2.9.0
