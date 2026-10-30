@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from .. import config
@@ -17,6 +17,45 @@ def _check_secret(key: str | None, header: str | None) -> None:
     supplied = key or header
     if supplied != config.CRON_SECRET:
         raise HTTPException(status_code=401, detail="Bad cron secret")
+
+
+# Idempotent column adds for existing tables (CREATE TABLE is handled by
+# create_all; ALTER is not). Extend this list whenever a new column ships.
+_COLUMN_MIGRATIONS = [
+    ("users", "can_daily_checks", "BOOLEAN NOT NULL DEFAULT FALSE"),
+]
+
+
+@router.api_route("/admin/migrate", methods=["GET", "POST"])
+def admin_migrate(key: str | None = Query(None), x_cron_key: str | None = Header(None),
+                  seed: bool = Query(True), db: Session = Depends(get_db)):
+    """One-time schema sync, protected by the cron secret. Safe to run repeatedly.
+
+    Creates any missing tables, adds any missing columns, and (seed=1) loads the
+    default Daily Checks areas. Hit it as:  /admin/migrate?key=YOUR_CRON_SECRET
+    Deliberately avoids reading the users table so it still works while an
+    out-of-date schema is breaking other pages."""
+    _check_secret(key, x_cron_key)
+    from ..db import engine, init_db
+
+    init_db()  # create_all -> makes any missing tables (incl. the Daily Checks ones)
+
+    added = []
+    is_pg = engine.dialect.name == "postgresql"
+    with engine.begin() as conn:
+        for tbl, col, ddl in _COLUMN_MIGRATIONS:
+            if is_pg:
+                conn.execute(text(f'ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS {col} {ddl}'))
+                added.append(f"{tbl}.{col}")
+
+    result = {"migrated": True, "tables": "ensured", "columns_added": added}
+    if seed:
+        from ..checks import seed_default_checklists
+        try:
+            result["seed"] = seed_default_checklists(db)
+        except Exception as exc:  # noqa: BLE001 - report, don't 500
+            result["seed_error"] = repr(exc)
+    return result
 
 
 @router.get("/health")

@@ -129,6 +129,21 @@ def test_manage_is_superadmin_only(client, db):
     assert client.get("/checks/manage").status_code == 200
 
 
+def test_admin_migrate_requires_secret(client):
+    assert client.get("/admin/migrate").status_code == 401
+    assert client.get("/admin/migrate?key=wrong").status_code == 401
+
+
+def test_admin_migrate_seeds_default_checklists(client, db):
+    r = client.get("/admin/migrate?key=test-cron")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["migrated"] is True
+    assert body["seed"]["checkpoints_total"] == 24
+    assert db.query(Checklist).filter_by(name="QMS").count() == 1
+    assert db.query(CheckpointItem).count() == 24
+
+
 def test_manage_create_area_and_item(client, db):
     login_as(client, db, "gourav@bharatsteels.in")
     client.post("/checks/manage/area/create", data={
