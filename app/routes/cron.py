@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import config
@@ -19,13 +19,6 @@ def _check_secret(key: str | None, header: str | None) -> None:
         raise HTTPException(status_code=401, detail="Bad cron secret")
 
 
-# Idempotent column adds for existing tables (CREATE TABLE is handled by
-# create_all; ALTER is not). Extend this list whenever a new column ships.
-_COLUMN_MIGRATIONS = [
-    ("users", "can_daily_checks", "BOOLEAN NOT NULL DEFAULT FALSE"),
-]
-
-
 @router.api_route("/admin/migrate", methods=["GET", "POST"])
 def admin_migrate(key: str | None = Query(None), x_cron_key: str | None = Header(None),
                   seed: bool = Query(True), db: Session = Depends(get_db)):
@@ -33,22 +26,15 @@ def admin_migrate(key: str | None = Query(None), x_cron_key: str | None = Header
 
     Creates any missing tables, adds any missing columns, and (seed=1) loads the
     default Daily Checks areas. Hit it as:  /admin/migrate?key=YOUR_CRON_SECRET
-    Deliberately avoids reading the users table so it still works while an
-    out-of-date schema is breaking other pages."""
+    (The same sync also runs automatically on every deploy; this endpoint also
+    seeds the checkpoints.) Deliberately avoids reading the users table so it
+    works even while an out-of-date schema is breaking other pages."""
     _check_secret(key, x_cron_key)
-    from ..db import engine, init_db
+    from ..db import sync_schema
 
-    init_db()  # create_all -> makes any missing tables (incl. the Daily Checks ones)
+    sync_schema()  # create missing tables + add missing columns (idempotent)
 
-    added = []
-    is_pg = engine.dialect.name == "postgresql"
-    with engine.begin() as conn:
-        for tbl, col, ddl in _COLUMN_MIGRATIONS:
-            if is_pg:
-                conn.execute(text(f'ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS {col} {ddl}'))
-                added.append(f"{tbl}.{col}")
-
-    result = {"migrated": True, "tables": "ensured", "columns_added": added}
+    result = {"migrated": True, "schema": "synced"}
     if seed:
         from ..checks import seed_default_checklists
         try:

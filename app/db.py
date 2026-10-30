@@ -44,3 +44,24 @@ def init_db() -> None:
     """Idempotent create-all. Safe to run repeatedly."""
     from . import models  # noqa: F401  (register mappers)
     Base.metadata.create_all(bind=engine)
+
+
+# Columns that ship after their table already exists in production. create_all
+# never ALTERs an existing table, so these are added explicitly. Idempotent.
+_COLUMN_MIGRATIONS = [
+    ("users", "can_daily_checks", "BOOLEAN NOT NULL DEFAULT FALSE"),
+]
+
+
+def sync_schema() -> None:
+    """Best-effort idempotent schema sync: create any missing tables and add any
+    missing columns. Runs on startup so a deploy self-heals without a console."""
+    from sqlalchemy import text
+    try:
+        init_db()
+        if engine.dialect.name == "postgresql":
+            with engine.begin() as conn:
+                for tbl, col, ddl in _COLUMN_MIGRATIONS:
+                    conn.execute(text(f'ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS {col} {ddl}'))
+    except Exception:  # noqa: BLE001 - never let a migration hiccup block boot
+        pass

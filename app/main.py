@@ -8,10 +8,15 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import config
-from .db import init_db
+from .db import init_db, sync_schema
 from .routes import checks, cron, web
 
 app = FastAPI(title=config.APP_NAME)
+
+# Self-heal the schema on boot: create any missing tables and add any missing
+# columns. Best-effort and idempotent, so a deploy fixes an out-of-date DB
+# without needing the Neon console.
+sync_schema()
 
 
 @app.exception_handler(StarletteHTTPException)
