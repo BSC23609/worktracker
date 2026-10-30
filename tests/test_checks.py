@@ -144,6 +144,22 @@ def test_admin_migrate_seeds_default_checklists(client, db):
     assert db.query(CheckpointItem).count() == 24
 
 
+def test_seed_defaults_button_loads_checklist(client, db):
+    login_as(client, db, "gourav@bharatsteels.in")
+    r = client.post("/checks/manage/seed-defaults", follow_redirects=False)
+    assert r.status_code == 303
+    assert db.query(CheckpointItem).count() == 24
+    assert db.query(Checklist).filter_by(name="QMS").count() == 1
+    # idempotent: a second click adds nothing
+    client.post("/checks/manage/seed-defaults", follow_redirects=False)
+    assert db.query(CheckpointItem).count() == 24
+
+
+def test_seed_defaults_is_superadmin_only(client, db):
+    login_as(client, db, "ravi@bharatsteels.in")
+    assert client.post("/checks/manage/seed-defaults", follow_redirects=False).status_code == 403
+
+
 def test_manage_create_area_and_item(client, db):
     login_as(client, db, "gourav@bharatsteels.in")
     client.post("/checks/manage/area/create", data={

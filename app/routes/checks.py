@@ -84,6 +84,16 @@ def checks_manage(request: Request, user: User = Depends(require_superadmin),
     })
 
 
+@router.post("/checks/manage/seed-defaults")
+def seed_defaults(admin: User = Depends(require_superadmin), db: Session = Depends(get_db)):
+    from ..checks import seed_default_checklists
+    r = seed_default_checklists(db)
+    if r["areas_created"] == 0:
+        return _flash("/checks/manage", "The default checklist is already loaded — nothing to add.")
+    return _flash("/checks/manage",
+                  f"Loaded {r['areas_created']} area(s) and {r['checkpoints_created']} checkpoint(s).")
+
+
 @router.post("/checks/manage/area/create")
 def area_create(name: str = Form(...), link: str = Form(""), login_hint: str = Form(""),
                 owner_label: str = Form(""), sort_order: str = Form("0"),

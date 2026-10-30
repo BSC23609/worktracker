@@ -5,6 +5,19 @@
 <div class="pagehead"><h1>Manage checkpoints</h1></div>
 <p class="help">Areas and their checkpoints. The whole list is shared — every trainee sees every area and anyone can tick any item.</p>
 
+{% if not checklists %}
+<div class="card">
+  <p>No checkpoints loaded yet. Load the default list (the 7 areas and 24 checkpoints from your DAILY_CHECKPOINTS sheet) in one click:</p>
+  <form method="post" action="/checks/manage/seed-defaults">
+    <button class="btn">Load the default checklist</button>
+  </form>
+</div>
+{% else %}
+<form method="post" action="/checks/manage/seed-defaults" style="margin:.4rem 0 1rem">
+  <button class="btn ghost sm" onclick="return confirm('Add any missing default areas from the sheet? Existing areas are left untouched.')">Load/refresh default checklist</button>
+</form>
+{% endif %}
+
 <details class="card">
   <summary>Add a new area</summary>
   <form method="post" action="/checks/manage/area/create" style="margin-top:.7rem">
