@@ -23,6 +23,7 @@
   </a>
   <nav class="topnav">
     <a href="/">Board</a>
+    {% if me.is_superadmin or me.can_daily_checks %}<a href="/checks">Daily Checks</a>{% endif %}
     {% if me.is_superadmin %}<a href="/master">Master</a>{% endif %}
     {% if me.is_superadmin %}<a href="/holidays">Holidays</a>{% endif %}
     <span class="who">{{ me.name }}{% if me.is_superadmin %} &middot; Superadmin{% endif %}</span>

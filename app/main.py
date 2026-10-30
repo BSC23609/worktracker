@@ -9,7 +9,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import config
 from .db import init_db
-from .routes import cron, web
+from .routes import checks, cron, web
 
 app = FastAPI(title=config.APP_NAME)
 
@@ -43,4 +43,5 @@ def favicon():
     return FileResponse(os.path.join(static_dir, "favicon.ico"), media_type="image/x-icon")
 
 app.include_router(cron.router)
+app.include_router(checks.router)
 app.include_router(web.router)

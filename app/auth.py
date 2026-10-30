@@ -143,3 +143,10 @@ def require_superadmin(user: User = Depends(require_user)) -> User:
     if user.role != ROLE_SUPERADMIN:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superadmin only")
     return user
+
+
+def require_checks_access(user: User = Depends(require_user)) -> User:
+    """Daily Checks is for the trainees (flagged users) and superadmins only."""
+    if user.role != ROLE_SUPERADMIN and not getattr(user, "can_daily_checks", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    return user

@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Daily Checks &middot; {{ app_name }}{% endblock %}
+{% block body %}
+<div class="pagehead">
+  <h1>Daily Checks</h1>
+  {% if day == today %}<span class="badge b-pending">Today &middot; {{ day.strftime('%d-%b-%Y, %A') }}</span>
+  {% else %}<span class="badge b-overdue">{{ day.strftime('%d-%b-%Y, %A') }}</span>{% endif %}
+</div>
+
+{% if me.is_superadmin %}
+<form method="get" action="/checks" class="card" style="display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap">
+  <div><label>View another day</label><input type="date" name="d" value="{{ day }}"></div>
+  <button class="btn sm">View</button>
+  <a class="btn ghost sm" href="/checks">Back to today</a>
+</form>
+{% endif %}
+
+{% if not working %}
+  <div class="card"><div class="empty">No checks due on {{ day.strftime('%d-%b-%Y') }} &mdash;
+  it's a {{ 'Sunday' if day.weekday()==6 else 'holiday' }}. Enjoy the day off.</div></div>
+{% elif not areas %}
+  <div class="card"><div class="empty">No checkpoints set up yet.
+  {% if me.is_superadmin %}<a href="/checks/manage">Set them up &rarr;</a>{% endif %}</div></div>
+{% else %}
+
+<div class="stats">
+  <div class="stat"><div class="n">{{ total }}</div><div class="l">Checkpoints today</div></div>
+  <div class="stat"><div class="n" style="color:var(--green,#15803d)">{{ done }}</div><div class="l">Done</div></div>
+  <div class="stat {{ 'red' if (total-done) else '' }}"><div class="n">{{ total - done }}</div><div class="l">Pending</div></div>
+</div>
+
+{% for a in areas %}
+<form method="post" action="/checks/{{ a.checklist.id }}/save" class="card">
+  {% if me.is_superadmin and day != today %}<input type="hidden" name="d" value="{{ day }}">{% endif %}
+  <div class="pagehead" style="align-items:baseline">
+    <h2 style="margin:0">{{ a.checklist.name }}</h2>
+    <span class="badge {{ 'b-ok' if a.done==a.total else 'b-pending' }}">{{ a.done }}/{{ a.total }} done</span>
+  </div>
+  <p class="help" style="margin:.2rem 0 .7rem">
+    {% if a.checklist.link %}🔗 <a href="https://{{ a.checklist.link|replace('https://','')|replace('http://','') }}" target="_blank" rel="noopener">{{ a.checklist.link }}</a>{% endif %}
+    {% if a.checklist.login_hint %} &nbsp;·&nbsp; Login: <strong>{{ a.checklist.login_hint }}</strong>{% endif %}
+    {% if a.checklist.owner_label %} &nbsp;·&nbsp; Owner: {{ a.checklist.owner_label }}{% endif %}
+  </p>
+
+  <ul class="check-list">
+    {% for r in a.rows %}
+    <li class="check-row">
+      <label class="chk">
+        <input type="checkbox" name="done" value="{{ r.item.id }}" {% if r.status and r.status.done %}checked{% endif %}>
+        <span class="ck-text">{{ r.item.text }}
+          {% if r.item.cadence == 'weekly' %}<span class="badge b-self">Weekly</span>{% endif %}
+          {% if r.item.action %}<span class="help ck-action">→ {{ r.item.action }}</span>{% endif %}
+        </span>
+      </label>
+      <input class="ck-note" type="text" name="note_{{ r.item.id }}" placeholder="Note / issue (optional)"
+             value="{{ r.status.note or '' }}">
+      {% if r.status and r.status.marked_at %}
+        <span class="help ck-by">last: {{ r.status.marked_by.name if r.status.marked_by else '—' }} · {{ r.status.marked_at.strftime('%d-%b %H:%M') }}</span>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  <button class="btn">Save {{ a.checklist.name }}</button>
+</form>
+{% endfor %}
+
+{% if me.is_superadmin %}<p class="help"><a href="/checks/manage">Manage checkpoints &rarr;</a></p>{% endif %}
+{% endif %}
+
+<style>
+.check-list{list-style:none;padding:0;margin:0}
+.check-row{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem .8rem;padding:.55rem 0;border-top:1px solid var(--g100,#eee)}
+.check-row:first-child{border-top:none}
+.check-row .chk{display:flex;align-items:flex-start;gap:.55rem;font-weight:400;flex:1 1 320px;margin:0;cursor:pointer}
+.check-row .chk input{width:auto;margin-top:.2rem;transform:scale(1.25)}
+.ck-text{line-height:1.35}
+.ck-action{display:block;margin-top:.1rem}
+.ck-note{flex:1 1 220px;min-width:180px}
+.ck-by{flex:0 0 auto;white-space:nowrap}
+</style>
+{% endblock %}

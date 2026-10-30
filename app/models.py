@@ -12,6 +12,7 @@ from sqlalchemy import (
     LargeBinary,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -54,6 +55,8 @@ class User(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     # Superadmins only: whether to receive the daily consolidated (admin) digest.
     wants_admin_digest: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Trainees: whether this user can see/use the Daily Checks tab (superadmins always can).
+    can_daily_checks: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     @property
@@ -259,3 +262,65 @@ class NotificationLog(Base):
     detail: Mapped[Optional[str]] = mapped_column(Text, default=None)
     dedupe_key: Mapped[Optional[str]] = mapped_column(String(120), default=None, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ---- daily checks (trainee checkpoint checklist) --------------------------
+CADENCE_DAILY = "daily"      # every working day
+CADENCE_WEEKLY = "weekly"    # once a week, on Mondays
+CADENCES = (CADENCE_DAILY, CADENCE_WEEKLY)
+
+
+class Checklist(Base):
+    """An area/app that gets checked (e.g. 'QMS'). Groups checkpoint items.
+
+    The whole checklist is shared: every trainee sees every area and anyone
+    can tick any item, so if one person is on leave the other covers it.
+    owner_label is just the name that normally owns the area (informational).
+    """
+
+    __tablename__ = "checklists"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(120))
+    link: Mapped[Optional[str]] = mapped_column(String(255), default=None)
+    login_hint: Mapped[Optional[str]] = mapped_column(String(120), default=None)  # which login to use on that app
+    owner_label: Mapped[Optional[str]] = mapped_column(String(120), default=None)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    items: Mapped[list["CheckpointItem"]] = relationship(
+        back_populates="checklist", order_by="CheckpointItem.seq",
+        cascade="all, delete-orphan")
+
+
+class CheckpointItem(Base):
+    __tablename__ = "checkpoint_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    checklist_id: Mapped[int] = mapped_column(ForeignKey("checklists.id"), index=True)
+    seq: Mapped[int] = mapped_column(Integer, default=1)
+    text: Mapped[str] = mapped_column(Text)
+    action: Mapped[Optional[str]] = mapped_column(Text, default=None)  # what to do if not OK
+    cadence: Mapped[str] = mapped_column(String(16), default=CADENCE_DAILY)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+    checklist: Mapped[Checklist] = relationship(back_populates="items")
+
+
+class CheckpointStatus(Base):
+    """One shared tick per (item, date). Any trainee may set or change it."""
+
+    __tablename__ = "checkpoint_status"
+    __table_args__ = (UniqueConstraint("item_id", "on_date", name="uq_checkpoint_item_date"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("checkpoint_items.id"), index=True)
+    on_date: Mapped[date] = mapped_column(Date, index=True)
+    done: Mapped[bool] = mapped_column(Boolean, default=False)
+    note: Mapped[Optional[str]] = mapped_column(Text, default=None)
+    marked_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), default=None)
+    marked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), default=None)
+
+    item: Mapped[CheckpointItem] = relationship(foreign_keys=[item_id])
+    marked_by: Mapped[Optional[User]] = relationship(foreign_keys=[marked_by_id])

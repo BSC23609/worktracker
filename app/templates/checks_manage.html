@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Manage checks &middot; {{ app_name }}{% endblock %}
+{% block body %}
+<p><a href="/checks" class="muted">&larr; Back to Daily Checks</a></p>
+<div class="pagehead"><h1>Manage checkpoints</h1></div>
+<p class="help">Areas and their checkpoints. The whole list is shared — every trainee sees every area and anyone can tick any item.</p>
+
+<details class="card">
+  <summary>Add a new area</summary>
+  <form method="post" action="/checks/manage/area/create" style="margin-top:.7rem">
+    <div class="row">
+      <div><label>Area name</label><input name="name" required placeholder="e.g. QMS"></div>
+      <div><label>Sort order</label><input name="sort_order" type="number" value="0"></div>
+    </div>
+    <div class="row">
+      <div><label>Link (optional)</label><input name="link" placeholder="qms.bharatsteels.in"></div>
+      <div><label>Login to use (optional)</label><input name="login_hint" placeholder="BSC/119"></div>
+      <div><label>Owner label (optional)</label><input name="owner_label" placeholder="Priya"></div>
+    </div>
+    <button class="btn">Add area</button>
+  </form>
+</details>
+
+{% for cl in checklists %}
+<div class="card">
+  <form method="post" action="/checks/manage/area/{{ cl.id }}/update">
+    <div class="pagehead" style="align-items:baseline">
+      <h2 style="margin:0">{{ cl.name }}{% if not cl.active %} <span class="badge b-overdue">inactive</span>{% endif %}</h2>
+    </div>
+    <div class="row">
+      <div><label>Name</label><input name="name" value="{{ cl.name }}" required></div>
+      <div><label>Sort order</label><input name="sort_order" type="number" value="{{ cl.sort_order }}"></div>
+      <div style="align-self:end"><label class="chk" style="font-weight:400"><input type="checkbox" name="active" {% if cl.active %}checked{% endif %} style="width:auto"> Active</label></div>
+    </div>
+    <div class="row">
+      <div><label>Link</label><input name="link" value="{{ cl.link or '' }}"></div>
+      <div><label>Login to use</label><input name="login_hint" value="{{ cl.login_hint or '' }}"></div>
+      <div><label>Owner label</label><input name="owner_label" value="{{ cl.owner_label or '' }}"></div>
+    </div>
+    <button class="btn sm">Save area</button>
+  </form>
+
+  <table style="margin-top:.8rem">
+    <thead><tr><th>#</th><th>Checkpoint</th><th>Action if not OK</th><th>Cadence</th><th>Active</th><th></th></tr></thead>
+    <tbody>
+    {% for it in cl.items %}
+      <tr>
+        <td>{{ it.seq }}</td>
+        <td colspan="5">
+          <form method="post" action="/checks/manage/item/{{ it.id }}/update" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+            <input name="text" value="{{ it.text }}" required style="flex:2 1 260px">
+            <input name="action" value="{{ it.action or '' }}" placeholder="action (optional)" style="flex:1 1 180px">
+            <select name="cadence" style="flex:0 0 auto">
+              {% for c in cadences %}<option value="{{ c }}" {% if it.cadence==c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+            </select>
+            <label class="chk" style="font-weight:400;flex:0 0 auto"><input type="checkbox" name="active" {% if it.active %}checked{% endif %} style="width:auto"> active</label>
+            <button class="btn sm">Save</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% for it in cl.items %}
+    <form method="post" action="/checks/manage/item/{{ it.id }}/delete" style="display:inline">
+      <button class="btn ghost sm" onclick="return confirm('Remove checkpoint #{{ it.seq }} from {{ cl.name }}?')">Remove #{{ it.seq }}</button>
+    </form>
+  {% endfor %}
+
+  <details style="margin-top:.8rem">
+    <summary>Add a checkpoint to {{ cl.name }}</summary>
+    <form method="post" action="/checks/manage/item/create" style="margin-top:.6rem">
+      <input type="hidden" name="checklist_id" value="{{ cl.id }}">
+      <label>Checkpoint</label>
+      <input name="text" required placeholder="What to check">
+      <div class="row">
+        <div><label>Action if not OK (optional)</label><input name="action" placeholder="e.g. Inform Dispatch and close it"></div>
+        <div><label>Cadence</label>
+          <select name="cadence">{% for c in cadences %}<option value="{{ c }}">{{ c }}</option>{% endfor %}</select>
+        </div>
+      </div>
+      <button class="btn sm">Add checkpoint</button>
+    </form>
+  </details>
+</div>
+{% endfor %}
+{% endblock %}
