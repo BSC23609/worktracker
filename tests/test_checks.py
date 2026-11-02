@@ -1,7 +1,9 @@
 """Daily Checks — shared trainee checkpoint checklist."""
 from datetime import date
 
-from app.checks import checklist_view, item_due_on, save_checklist
+from datetime import datetime, timezone
+
+from app.checks import checklist_view, fmt_ist, item_due_on, save_checklist
 from app.db import today_ist
 from app.models import Checklist, CheckpointItem, CheckpointStatus, Holiday, User
 from tests.conftest import login_as
@@ -28,6 +30,15 @@ def _seed(db):
 
 
 # ---- cadence --------------------------------------------------------------
+def test_fmt_ist_converts_utc_to_indian_time():
+    # 05:08 UTC is 10:38 IST (+5:30)
+    utc = datetime(2026, 11, 2, 5, 8, tzinfo=timezone.utc)
+    assert fmt_ist(utc) == "02-Nov 10:38"
+    # a naive timestamp is treated as UTC
+    assert fmt_ist(datetime(2026, 11, 2, 5, 8)) == "02-Nov 10:38"
+    assert fmt_ist(None) == ""
+
+
 def test_item_due_on_cadence():
     assert item_due_on("daily", TUE, True) is True
     assert item_due_on("weekly", TUE, True) is False      # weekly hides on non-Monday

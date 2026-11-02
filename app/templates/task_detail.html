@@ -18,7 +18,7 @@
     <div><label>Current deadline</label><strong>{{ task.current_deadline.strftime('%d-%b-%Y') }}</strong></div>
   </div>
   {% if task.status == 'completed' %}
-    <p class="help" style="margin-top:.8rem">Completed on {{ task.completed_at.strftime('%d-%b-%Y %H:%M') }}
+    <p class="help" style="margin-top:.8rem">Completed on {{ task.completed_at | ist('%d-%b-%Y %H:%M') }}
     {% if task.completion_note %} &mdash; {{ task.completion_note }}{% endif %}</p>
   {% endif %}
 </div>

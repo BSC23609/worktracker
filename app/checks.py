@@ -9,17 +9,29 @@ Design:
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from sqlalchemy import func
 
+from . import config
 from .db import now_ist
 from .digests import is_working_day
 from .models import (CADENCE_DAILY, CADENCE_WEEKLY, Checklist, CheckpointItem,
                      CheckpointStatus, User)
+
+
+def fmt_ist(dt, fmt: str = "%d-%b %H:%M") -> str:
+    """Format a datetime in IST. Postgres hands timestamps back in UTC, so a
+    stored IST moment must be converted before display. Naive values are
+    treated as UTC."""
+    if dt is None:
+        return ""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(config.IST).strftime(fmt)
 
 
 _D, _W = CADENCE_DAILY, CADENCE_WEEKLY

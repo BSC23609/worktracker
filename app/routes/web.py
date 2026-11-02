@@ -53,6 +53,8 @@ from ..services import (
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 templates.env.globals["app_name"] = config.APP_NAME
+from ..checks import fmt_ist  # noqa: E402
+templates.env.filters["ist"] = fmt_ist
 
 
 def _parse_date(s: str) -> date:

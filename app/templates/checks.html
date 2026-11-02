@@ -55,7 +55,7 @@
       <input class="ck-note" type="text" name="note_{{ r.item.id }}" placeholder="Note / issue (optional)"
              value="{{ r.status.note or '' }}">
       {% if r.status and r.status.marked_at %}
-        <span class="help ck-by">last: {{ r.status.marked_by.name if r.status.marked_by else '—' }} · {{ r.status.marked_at.strftime('%d-%b %H:%M') }}</span>
+        <span class="help ck-by">last: {{ r.status.marked_by.name if r.status.marked_by else '—' }} · {{ r.status.marked_at | ist }}</span>
       {% endif %}
     </li>
     {% endfor %}
