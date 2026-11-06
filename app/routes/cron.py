@@ -66,10 +66,32 @@ def daily_digests(key: str | None = Query(None),
     _check_secret(key, x_cron_key)
     generated = generate_due_recurring_tasks(db)
     today = today_ist()
+    # On Saturdays, the weekly Daily Checks report goes out automatically as part
+    # of this same daily run — no separate scheduler needed. It is idempotent per
+    # week, so it can't double-send.
+    weekly = None
+    if today.weekday() == 5:  # Saturday
+        from ..checks import send_weekly_report
+        weekly = send_weekly_report(db, force=force)
     if not force and not is_working_day(db, today):
         reason = "sunday" if today.weekday() == 6 else "holiday"
         return {"date": today.isoformat(), "digests_skipped": reason,
-                "recurring_generated": generated}
+                "recurring_generated": generated, "weekly_report": weekly}
     result = run_daily_digests(db, force=force)
     result["recurring_generated"] = generated
+    if weekly is not None:
+        result["weekly_report"] = weekly
     return result
+
+
+@router.post("/cron/weekly-checks-report")
+def weekly_checks_report(key: str | None = Query(None),
+                         x_cron_key: str | None = Header(None),
+                         force: bool = Query(False),
+                         db: Session = Depends(get_db)):
+    """Email the weekly Daily Checks report now. Optional — the daily cron already
+    sends it automatically on Saturdays. Use this only to pin an exact send time
+    (e.g. a Saturday 13:00 IST job) or to re-send with force=1."""
+    _check_secret(key, x_cron_key)
+    from ..checks import send_weekly_report
+    return send_weekly_report(db, force=force)

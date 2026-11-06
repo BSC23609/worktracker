@@ -62,6 +62,8 @@ WATI_TEMPLATE_TASK_DONE = os.getenv("WATI_TEMPLATE_TASK_DONE", "wt_task_done")
 
 # Who gets notified when any task is completed (email + WhatsApp).
 COMPLETION_NOTIFY_EMAIL = os.getenv("COMPLETION_NOTIFY_EMAIL", "gourav@bharatsteels.in")
+# Who gets the weekly Daily Checks report (emailed, e.g. Saturday 1pm IST via cron).
+CHECKS_REPORT_EMAIL = os.getenv("CHECKS_REPORT_EMAIL", "jeeva@bharatsteels.in")
 WATI_BROADCAST_NAME = os.getenv("WATI_BROADCAST_NAME", "worktracker")
 WATI_DEFAULT_CC = os.getenv("WATI_DEFAULT_CC", "91")  # country code prepended to 10-digit numbers
 

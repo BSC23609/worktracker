@@ -3,7 +3,8 @@ from datetime import date
 
 from datetime import datetime, timezone
 
-from app.checks import checklist_view, fmt_ist, item_due_on, save_checklist
+from app.checks import (build_weekly_report, checklist_view, fmt_ist, item_due_on,
+                        save_checklist)
 from app.db import today_ist
 from app.models import Checklist, CheckpointItem, CheckpointStatus, Holiday, User
 from tests.conftest import login_as
@@ -169,6 +170,53 @@ def test_seed_defaults_button_loads_checklist(client, db):
 def test_seed_defaults_is_superadmin_only(client, db):
     login_as(client, db, "ravi@bharatsteels.in")
     assert client.post("/checks/manage/seed-defaults", follow_redirects=False).status_code == 403
+
+
+WEEK_SAT = date(2026, 1, 10)   # a Saturday; its week is Mon 05 .. Sat 10 Jan
+
+
+def test_weekly_report_counts_days_and_issues(db):
+    cl, d1, d2 = _seed(db)   # QMS: d1 daily, d2 weekly (Mondays)
+    ravi = _u(db, "ravi@bharatsteels.in")
+    # Monday: daily done, weekly left undone
+    save_checklist(db, checklist_id=cl.id, d=date(2026, 1, 5), actor=ravi, done_ids={d1.id}, notes={})
+    # Wednesday: daily done with a note
+    save_checklist(db, checklist_id=cl.id, d=date(2026, 1, 7), actor=ravi,
+                   done_ids={d1.id}, notes={d1.id: "all ok"})
+    subject, body, stats = build_weekly_report(db, WEEK_SAT)
+    assert stats["week_start"] == "2026-01-05" and stats["week_end"] == "2026-01-10"
+    # Mon has 2 due (daily+weekly), Tue..Sat have 1 each -> 2 + 5 = 7
+    assert stats["total"] == 7
+    assert stats["done"] == 2
+    assert "Weekly Report" in subject and "QMS" in body
+    assert "NOT DONE" in body            # Monday's weekly item was not done
+
+
+def test_weekly_report_is_idempotent_per_week(db):
+    from app.checks import send_weekly_report
+    from app.models import NotificationLog
+    _seed(db)
+    _, _, stats = build_weekly_report(db, WEEK_SAT)
+    key = f"weekly_checks:{stats['week_start']}"
+    db.add(NotificationLog(kind="weekly_checks_report", channel="email",
+                           recipient="jeeva@bharatsteels.in", status="sent", dedupe_key=key))
+    db.commit()
+    assert send_weekly_report(db, on=WEEK_SAT).get("skipped") == "already sent this week"
+    assert "skipped" not in send_weekly_report(db, on=WEEK_SAT, force=True)  # force overrides
+
+
+def test_weekly_report_endpoint_requires_secret(client):
+    assert client.post("/cron/weekly-checks-report").status_code == 401
+
+
+def test_weekly_report_endpoint_runs(client, db):
+    _seed(db)
+    r = client.post("/cron/weekly-checks-report?key=test-cron")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["report"] == "weekly_checks"
+    assert body["recipient"] == "jeeva@bharatsteels.in"
+    assert body["email_sent"] is False   # SMTP disabled in tests, but no error
 
 
 def test_manage_create_area_and_item(client, db):
