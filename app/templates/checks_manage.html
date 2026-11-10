@@ -5,6 +5,17 @@
 <div class="pagehead"><h1>Manage checkpoints</h1></div>
 <p class="help">Areas and their checkpoints. The whole list is shared — every trainee sees every area and anyone can tick any item.</p>
 
+<div class="card">
+  <h2 style="margin:0 0 .3rem">Weekly report</h2>
+  <p class="help" style="margin:.1rem 0 .7rem">
+    A summary of the week's checks is emailed to <strong>{{ report_email }}</strong> automatically every Saturday.
+    Use this button to send it right now (this week so far).
+  </p>
+  <form method="post" action="/checks/manage/send-weekly-now">
+    <button class="btn">Send weekly report now</button>
+  </form>
+</div>
+
 {% if not checklists %}
 <div class="card">
   <p>No checkpoints loaded yet. Load the default list (the 7 areas and 24 checkpoints from your DAILY_CHECKPOINTS sheet) in one click:</p>

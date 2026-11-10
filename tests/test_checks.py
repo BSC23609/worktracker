@@ -205,6 +205,14 @@ def test_weekly_report_is_idempotent_per_week(db):
     assert "skipped" not in send_weekly_report(db, on=WEEK_SAT, force=True)  # force overrides
 
 
+def test_send_weekly_now_button_is_superadmin_only(client, db):
+    _seed(db)
+    login_as(client, db, "ravi@bharatsteels.in")
+    assert client.post("/checks/manage/send-weekly-now", follow_redirects=False).status_code == 403
+    login_as(client, db, "gourav@bharatsteels.in")
+    assert client.post("/checks/manage/send-weekly-now", follow_redirects=False).status_code == 303
+
+
 def test_weekly_report_endpoint_requires_secret(client):
     assert client.post("/cron/weekly-checks-report").status_code == 401
 
