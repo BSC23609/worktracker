@@ -173,6 +173,19 @@ def _week_bounds(on: date) -> tuple[date, date]:
     return start, on
 
 
+def last_week_saturday(ref: date | None = None) -> date:
+    """The Saturday of the previous week — used to send last week's full report."""
+    ref = ref or today_ist()
+    this_monday = ref - timedelta(days=ref.weekday())
+    return this_monday - timedelta(days=2)  # previous Saturday
+
+
+def week_saturday(d: date) -> date:
+    """The Saturday of the week that contains date d (so any picked day maps to
+    its full Mon..Sat week)."""
+    return d - timedelta(days=d.weekday()) + timedelta(days=5)
+
+
 def _collect_week(db: Session, start: date, end: date):
     """Walk the week and gather the figures the report needs."""
     day_rows = []          # (label, done, total, pending)
@@ -183,7 +196,10 @@ def _collect_week(db: Session, start: date, end: date):
     d = start
     while d <= end:
         areas, working = checklist_view(db, d)
-        if working and areas:
+        # Skip a day where nothing at all was recorded — a leave/holiday day
+        # nobody logged in for. Otherwise its items would all look "pending".
+        has_activity = any(r["status"] is not None for a in areas for r in a["rows"])
+        if working and areas and has_activity:
             working_days += 1
             day_done = sum(a["done"] for a in areas)
             day_total = sum(a["total"] for a in areas)

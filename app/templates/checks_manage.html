@@ -9,10 +9,16 @@
   <h2 style="margin:0 0 .3rem">Weekly report</h2>
   <p class="help" style="margin:.1rem 0 .7rem">
     A summary of the week's checks is emailed to <strong>{{ report_email }}</strong> automatically every Saturday.
-    Use this button to send it right now (this week so far).
+    To send one now, pick any day of the week you want and press Send — you'll get that week's full report (Mon–Sat).
+    Leave the date as today for this week so far.
   </p>
-  <form method="post" action="/checks/manage/send-weekly-now">
-    <button class="btn">Send weekly report now</button>
+  <form method="post" action="/checks/manage/send-weekly-now"
+        style="display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap">
+    <div>
+      <label>Week of</label>
+      <input type="date" name="report_date" value="{{ today }}" max="{{ today }}">
+    </div>
+    <button class="btn">Send report by email</button>
   </form>
 </div>
 

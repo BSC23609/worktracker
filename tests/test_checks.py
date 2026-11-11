@@ -175,22 +175,33 @@ def test_seed_defaults_is_superadmin_only(client, db):
 WEEK_SAT = date(2026, 1, 10)   # a Saturday; its week is Mon 05 .. Sat 10 Jan
 
 
-def test_weekly_report_counts_days_and_issues(db):
+def test_weekly_report_counts_only_days_with_activity(db):
     cl, d1, d2 = _seed(db)   # QMS: d1 daily, d2 weekly (Mondays)
     ravi = _u(db, "ravi@bharatsteels.in")
-    # Monday: daily done, weekly left undone
+    # Monday has activity (daily ticked), weekly left undone
     save_checklist(db, checklist_id=cl.id, d=date(2026, 1, 5), actor=ravi, done_ids={d1.id}, notes={})
-    # Wednesday: daily done with a note
+    # Wednesday has activity (daily done)
     save_checklist(db, checklist_id=cl.id, d=date(2026, 1, 7), actor=ravi,
                    done_ids={d1.id}, notes={d1.id: "all ok"})
+    # Tue/Thu/Fri/Sat: no one logged in -> excluded as leave/no-activity days
     subject, text, html, stats = build_weekly_report(db, WEEK_SAT)
     assert stats["week_start"] == "2026-01-05" and stats["week_end"] == "2026-01-10"
-    # Mon has 2 due (daily+weekly), Tue..Sat have 1 each -> 2 + 5 = 7
-    assert stats["total"] == 7
+    assert stats["working_days"] == 2                 # only Mon + Wed counted
+    assert stats["total"] == 3                        # Mon (daily+weekly) + Wed (daily)
     assert stats["done"] == 2
     assert "Weekly Report" in subject and "QMS" in text
-    assert "NOT DONE" in text             # Monday's weekly item was not done
-    assert "<table" in html and "Not done" in html  # HTML table version
+    assert "NOT DONE" in text                          # Monday's weekly item not done
+    assert "<table" in html and "Not done" in html     # HTML table version
+
+
+def test_leave_day_with_no_records_is_dropped(db):
+    cl, d1, _ = _seed(db)
+    ravi = _u(db, "ravi@bharatsteels.in")
+    # only Tuesday has any activity; Monday (leave) has none
+    save_checklist(db, checklist_id=cl.id, d=date(2026, 1, 6), actor=ravi, done_ids={d1.id}, notes={})
+    subject, text, html, stats = build_weekly_report(db, WEEK_SAT)
+    assert stats["working_days"] == 1 and stats["total"] == 1 and stats["done"] == 1
+    assert "Mon 05-Jan" not in text and "Mon 05-Jan" not in html   # leave day removed
 
 
 def test_weekly_report_is_idempotent_per_week(db):
@@ -212,6 +223,28 @@ def test_send_weekly_now_button_is_superadmin_only(client, db):
     assert client.post("/checks/manage/send-weekly-now", follow_redirects=False).status_code == 403
     login_as(client, db, "gourav@bharatsteels.in")
     assert client.post("/checks/manage/send-weekly-now", follow_redirects=False).status_code == 303
+
+
+def test_send_last_week_button(client, db):
+    _seed(db)
+    login_as(client, db, "ravi@bharatsteels.in")
+    assert client.post("/checks/manage/send-last-week", follow_redirects=False).status_code == 403
+    login_as(client, db, "gourav@bharatsteels.in")
+    assert client.post("/checks/manage/send-last-week", follow_redirects=False).status_code == 303
+
+
+def test_send_weekly_with_date_picks_that_week(db):
+    # a picked Wednesday resolves to that week's Mon..Sat (05..10 Jan)
+    from app.checks import week_saturday
+    assert week_saturday(date(2026, 1, 7)) == WEEK_SAT  # Wed -> Sat of same week
+
+
+def test_send_weekly_now_accepts_a_date(client, db):
+    _seed(db)
+    login_as(client, db, "gourav@bharatsteels.in")
+    r = client.post("/checks/manage/send-weekly-now",
+                    data={"report_date": "2026-01-07"}, follow_redirects=False)
+    assert r.status_code == 303
 
 
 def test_weekly_report_endpoint_requires_secret(client):

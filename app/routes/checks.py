@@ -82,20 +82,39 @@ def checks_manage(request: Request, user: User = Depends(require_superadmin),
         select(Checklist).order_by(Checklist.active.desc(), Checklist.sort_order, Checklist.id)))
     return templates.TemplateResponse(request, "checks_manage.html", {
         "me": user, "checklists": checklists, "cadences": CADENCES,
-        "report_email": config.CHECKS_REPORT_EMAIL,
+        "report_email": config.CHECKS_REPORT_EMAIL, "today": today_ist(),
         "ok": request.query_params.get("ok"), "err": request.query_params.get("err"),
     })
 
 
-@router.post("/checks/manage/send-weekly-now")
-def send_weekly_now(admin: User = Depends(require_superadmin), db: Session = Depends(get_db)):
-    from ..checks import send_weekly_report
-    r = send_weekly_report(db, force=True)
+def _weekly_flash(r: dict):
     if r.get("email_sent"):
-        return _flash("/checks/manage", f"Weekly report emailed to {r['recipient']}.")
+        return _flash("/checks/manage",
+                      f"Report for {r['week_start']} to {r['week_end']} emailed to {r['recipient']}.")
     return _flash("/checks/manage",
                   f"Tried to email {r['recipient']} but it didn't go out — the email (SMTP) settings "
                   "look off. Nothing was sent.", ok=False)
+
+
+@router.post("/checks/manage/send-weekly-now")
+def send_weekly_now(report_date: str = Form(""),
+                    admin: User = Depends(require_superadmin), db: Session = Depends(get_db)):
+    """Email the report for the week containing `report_date` (any day of that
+    week). No date = this week so far."""
+    from ..checks import send_weekly_report, week_saturday
+    on = None
+    if report_date.strip():
+        try:
+            on = week_saturday(_parse_date(report_date))
+        except ValueError:
+            on = None
+    return _weekly_flash(send_weekly_report(db, on=on, force=True))
+
+
+@router.post("/checks/manage/send-last-week")
+def send_last_week(admin: User = Depends(require_superadmin), db: Session = Depends(get_db)):
+    from ..checks import last_week_saturday, send_weekly_report
+    return _weekly_flash(send_weekly_report(db, on=last_week_saturday(), force=True))
 
 
 @router.post("/checks/manage/seed-defaults")
