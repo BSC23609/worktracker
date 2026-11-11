@@ -183,20 +183,21 @@ def test_weekly_report_counts_days_and_issues(db):
     # Wednesday: daily done with a note
     save_checklist(db, checklist_id=cl.id, d=date(2026, 1, 7), actor=ravi,
                    done_ids={d1.id}, notes={d1.id: "all ok"})
-    subject, body, stats = build_weekly_report(db, WEEK_SAT)
+    subject, text, html, stats = build_weekly_report(db, WEEK_SAT)
     assert stats["week_start"] == "2026-01-05" and stats["week_end"] == "2026-01-10"
     # Mon has 2 due (daily+weekly), Tue..Sat have 1 each -> 2 + 5 = 7
     assert stats["total"] == 7
     assert stats["done"] == 2
-    assert "Weekly Report" in subject and "QMS" in body
-    assert "NOT DONE" in body            # Monday's weekly item was not done
+    assert "Weekly Report" in subject and "QMS" in text
+    assert "NOT DONE" in text             # Monday's weekly item was not done
+    assert "<table" in html and "Not done" in html  # HTML table version
 
 
 def test_weekly_report_is_idempotent_per_week(db):
     from app.checks import send_weekly_report
     from app.models import NotificationLog
     _seed(db)
-    _, _, stats = build_weekly_report(db, WEEK_SAT)
+    *_, stats = build_weekly_report(db, WEEK_SAT)
     key = f"weekly_checks:{stats['week_start']}"
     db.add(NotificationLog(kind="weekly_checks_report", channel="email",
                            recipient="jeeva@bharatsteels.in", status="sent", dedupe_key=key))

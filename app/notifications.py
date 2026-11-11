@@ -116,7 +116,7 @@ def _log(db: Session, *, task_id, kind, channel, recipient, status, detail=None,
 
 
 def send_email(db: Session, *, to: str, subject: str, body: str, kind: str,
-               task_id=None, dedupe_key=None) -> bool:
+               task_id=None, dedupe_key=None, html: str | None = None) -> bool:
     if not config.NOTIFY_EMAIL_ENABLED:
         _log(db, task_id=task_id, kind=kind, channel="email", recipient=to,
              status="skipped", detail="SMTP not configured", dedupe_key=dedupe_key)
@@ -126,11 +126,15 @@ def send_email(db: Session, *, to: str, subject: str, body: str, kind: str,
              status="skipped", detail="no recipient", dedupe_key=dedupe_key)
         return False
     try:
-        msg = MIMEMultipart()
+        # multipart/alternative when an HTML part is supplied, so clients that
+        # render HTML show the table and the rest fall back to plain text.
+        msg = MIMEMultipart("alternative") if html else MIMEMultipart()
         msg["From"] = f"{config.SMTP_FROM_NAME} <{config.SMTP_FROM}>"
         msg["To"] = to
         msg["Subject"] = subject
         msg.attach(MIMEText(body, "plain", "utf-8"))
+        if html:
+            msg.attach(MIMEText(html, "html", "utf-8"))
         ctx = ssl.create_default_context()
         with smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT, timeout=15) as s:
             s.starttls(context=ctx)
